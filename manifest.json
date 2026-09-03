@@ -1,0 +1,16 @@
+{
+  "name": "小马工作台",
+  "short_name": "小马工作台",
+  "description": "供应链 · 仓储物流 · 智能化",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFCF4",
+  "theme_color": "#FF8A00",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
