@@ -2959,6 +2959,8 @@ function ionRenderCanvas(){
   if(!d){ return null; }
   var cv=document.getElementById('ion_canvas');
   if(!cv) return null;
+  // 提前获取 ctx：fitRows（动态行高测量）在下面就要用 ctx.measureText，必须在 ctx 定义后再调用
+  var ctx=cv.getContext('2d');
   // 移动端画布：宽度按内容定（WeChat 适合 ~720px 宽），用 2x DPR 出清晰图
   var dpr=window.devicePixelRatio||1;
   var W=720, pad=24, titleH=72;
@@ -2970,6 +2972,8 @@ function ionRenderCanvas(){
   var dirBgRow1='#FFFFFF';
   var dirBgRow2='#FAF6EE';
   // ===== 列定义：每列 x/宽/对齐方式（表头与数据共享同一组 cols → 纵向中轴线绝对重合） =====
+  // cardX 必须在 cols 之前声明（修复 var 提升导致 cols.x 全为 NaN 的 bug：复制图片表格画不出）
+  var cardX=pad;
   // 5 列总宽 96+248+76+96+78=594，加左右各 12px 内边距 = 618, W=720 留 24px 外边距
   // 仓库 居中 / 产品 左对齐（完整显示不够就换行） / 规格居中 / 日期居中 / 数量居中
   var cols=[
@@ -2998,7 +3002,7 @@ function ionRenderCanvas(){
   H=Math.max(460, H);
   cv.width=W*dpr; cv.height=H*dpr;
   cv.style.width=W+'px'; cv.style.height=H+'px';
-  var ctx=cv.getContext('2d');
+  ctx=cv.getContext('2d'); // 设尺寸后 context 状态被重置，重新取同一 context 对象
   ctx.scale(dpr,dpr);
   // 整体背景（淡米色）
   ctx.fillStyle='#FBF6EB'; ctx.fillRect(0,0,W,H);
@@ -3033,7 +3037,7 @@ function ionRenderCanvas(){
   ctx.textAlign='left';
 
   // ===== 信息卡片区 =====
-  var cardX=pad, cardY=bandY+bandH+18, cardW=W-pad*2;
+  var cardY=bandY+bandH+18, cardW=W-pad*2;
   var y=cardY;
   function kv(k,v,color,big){
     // 左侧小标签
