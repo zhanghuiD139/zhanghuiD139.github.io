@@ -2969,10 +2969,32 @@ function ionRenderCanvas(){
   var dirBgLight=d.dir==='in'?'#E8F7EE':'#FFEFD7';
   var dirBgRow1='#FFFFFF';
   var dirBgRow2='#FAF6EE';
-  // 估算高度
-  var rowH=42;
+  // ===== 列定义：每列 x/宽/对齐方式（表头与数据共享同一组 cols → 纵向中轴线绝对重合） =====
+  // 5 列总宽 96+248+76+96+78=594，加左右各 12px 内边距 = 618, W=720 留 24px 外边距
+  // 仓库 居中 / 产品 左对齐（完整显示不够就换行） / 规格居中 / 日期居中 / 数量居中
+  var cols=[
+    {k:'仓库',     x:cardX+12,  w:96,  align:'center'},
+    {k:'产品',     x:cardX+114, w:248, align:'left'},
+    {k:'规格/体积',x:cardX+368, w:76,  align:'center'},
+    {k:'日期',     x:cardX+450, w:96,  align:'center'},
+    {k:'数量',     x:cardX+552, w:78,  align:'center'}
+  ];
+  // 行高：根据产品名换行行数动态算（产品列最多 3 行：每行 13px → 18px 行距 → 30px；单行 24px；多行 +N*16）
+  function fitRows(rows){
+    var totalH=0;
+    rows.forEach(function(r){
+      if(!(+r.qty>0)) return;
+      var lines=wrapText(ctx, String(r.product||'—'), cols[1].x, 0, cols[1].w-4, 14, 13).length;
+      var h=Math.max(42, 18 + lines*18);
+      totalH+=h;
+    });
+    return totalH;
+  }
+  var dynRowsH=fitRows(d.rows);
+  // 总高度重新计算
+  var rowH=42; // 最小行高，动态扩
   var infoRows=4 + (d.drv?1:0) + (d.note?1:0);
-  var H=titleH + 22 + infoRows*30 + 16 + 40 + d.rows.length*rowH + 50 + 30;
+  var H=titleH + 22 + infoRows*30 + 16 + 28 + 28 + dynRowsH + 50 + 30;
   H=Math.max(460, H);
   cv.width=W*dpr; cv.height=H*dpr;
   cv.style.width=W+'px'; cv.style.height=H+'px';
@@ -3067,51 +3089,53 @@ function ionRenderCanvas(){
   ctx.fill();
   ctx.fillStyle=dirColorDeep;
   ctx.font='700 12px "PingFang SC","Microsoft YaHei",sans-serif';
-  var cols=[
-    {k:'仓库',x:cardX+12,w:84},
-    {k:'产品',x:cardX+100,w:228},
-    {k:'规格/体积',x:cardX+332,w:90},
-    {k:'日期',x:cardX+426,w:108},
-    {k:'数量',x:cardX+538,w:80}
-  ];
-  cols.forEach(function(c){ ctx.fillText(c.k, c.x, thY+18); });
+  // 画表头（按 col.align 居中/左对齐 → 表头与数据列中心线绝对重合）
+  cols.forEach(function(c){
+    drawColText(ctx, c.k, c, thY+18, dirColorDeep, '700 12px "PingFang SC","Microsoft YaHei",sans-serif');
+  });
   y=thY+thH+4;
   // 数据行
   var rowIdx=0;
   d.rows.forEach(function(r){
     var hasQty=!!(+r.qty>0);
     if(!hasQty) return;
+    // 产品列换行 → 算出本行实际行高
+    var prodTxt=String(r.product||'—');
+    var prodLines=ctx.measureText(prodTxt).width>cols[1].w-4
+      ? (function(){
+          // 模拟换行（不实际绘制，复用 wrapText 逻辑）
+          var chars=prodTxt.split(''); var lines=[]; var line='';
+          for(var i=0;i<chars.length;i++){
+            var test=line+chars[i];
+            if(ctx.measureText(test).width>cols[1].w-4 && line.length>0){ lines.push(line); line=chars[i]; }
+            else line=test;
+          }
+          if(line) lines.push(line);
+          return lines;
+        })()
+      : [prodTxt];
+    var thisRowH=Math.max(42, 18 + prodLines.length*18);
     // 行底色（斑马纹）
     var bg=rowIdx%2===0?dirBgRow1:dirBgRow2;
     ctx.fillStyle=bg;
-    ctx.fillRect(cardX, y, cardW, rowH-2);
-    // 截断产品名
-    var prodTxt=String(r.product||'—');
-    if(ctx.measureText(prodTxt).width>228){
-      while(ctx.measureText(prodTxt+'…').width>228 && prodTxt.length>0) prodTxt=prodTxt.slice(0,-1);
-      prodTxt+='…';
-    }
+    ctx.fillRect(cardX, y, cardW, thisRowH-2);
     // 仓库
-    ctx.fillStyle='#222'; ctx.font='600 13px "PingFang SC","Microsoft YaHei",sans-serif';
-    ctx.fillText(r.wh||'—', cols[0].x, y+25);
-    // 产品
-    ctx.fillStyle='#222'; ctx.font='13px "PingFang SC","Microsoft YaHei",sans-serif';
-    ctx.fillText(prodTxt, cols[1].x, y+25);
+    drawColText(ctx, r.wh, cols[0], y+25, '#222', '600 13px "PingFang SC","Microsoft YaHei",sans-serif');
+    // 产品（多行 → 用 wrapText 实际绘制）
+    var prodStartY=y+18;
+    var _drawLines=wrapText(ctx, prodTxt, cols[1].x, prodStartY, cols[1].w-4, 18, 13);
     // 规格/体积
-    ctx.fillStyle='#777'; ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';
-    ctx.fillText(r.vol||'—', cols[2].x, y+25);
+    drawColText(ctx, r.vol, cols[2], y+25, '#777', '12px "PingFang SC","Microsoft YaHei",sans-serif');
     // 日期
-    ctx.fillStyle='#555'; ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';
-    ctx.fillText(r.date||'—', cols[3].x, y+25);
+    drawColText(ctx, r.date, cols[3], y+25, '#555', '12px "PingFang SC","Microsoft YaHei",sans-serif');
     // 数量（大字号醒目）
-    ctx.fillStyle=dirColor; ctx.font='800 17px "PingFang SC","Microsoft YaHei",sans-serif';
-    ctx.fillText(String(r.qty||'—'), cols[4].x, y+27);
-    // 行右侧小箭头/标记
-    ctx.fillStyle=dirColor; ctx.font='10px sans-serif';
+    drawColText(ctx, String(r.qty), cols[4], y+27, dirColor, '800 17px "PingFang SC","Microsoft YaHei",sans-serif');
+    // 行右侧小圆点
+    ctx.fillStyle=dirColor; ctx.font='14px sans-serif';
     ctx.textAlign='right';
     ctx.fillText('●', cardX+cardW-8, y+25);
     ctx.textAlign='left';
-    y+=rowH;
+    y+=thisRowH;
     rowIdx++;
   });
   // 表格外框
@@ -3149,6 +3173,35 @@ function roundRect(ctx,x,y,w,h,r){
   ctx.lineTo(x,y+r);
   ctx.quadraticCurveTo(x,y,x+r,y);
   ctx.closePath();
+}
+/* canvas 文本按列宽换行（中文按字符切，英文按空格）→ 返回行数组 */
+function wrapText(ctx, text, x, y, maxWidth, lineHeight, fontSize){
+  if(!text) return [''];
+  text=String(text);
+  // 中文/无空格文本：按字符切
+  var chars=text.split('');
+  var lines=[]; var line='';
+  for(var i=0;i<chars.length;i++){
+    var test=line+chars[i];
+    if(ctx.measureText(test).width>maxWidth && line.length>0){
+      lines.push(line); line=chars[i];
+    } else { line=test; }
+  }
+  if(line) lines.push(line);
+  // 渲染
+  for(var j=0;j<lines.length;j++) ctx.fillText(lines[j], x, y + j*lineHeight);
+  return lines;
+}
+/* 按列对齐方式在 col 中心点画文字 */
+function drawColText(ctx, text, col, y, color, font){
+  ctx.fillStyle=color; ctx.font=font;
+  var txt=String(text==null||text===''?'—':text);
+  var tw=ctx.measureText(txt).width;
+  var drawX;
+  if(col.align==='center') drawX=col.x + (col.w-tw)/2;
+  else if(col.align==='right') drawX=col.x + col.w - tw;
+  else drawX=col.x;
+  ctx.fillText(txt, drawX, y);
 }
 
 /* 预通知：保存 PNG */
