@@ -2612,6 +2612,7 @@ function ioNoticeForm(){
         '<option value="">（填写项目号/合同号后点「加载产品」）</option>'+
       '</select>'+
       '<button class="btn sm" type="button" data-act="ionLoadProduct">⟳ 加载产品</button>'+
+      '<button class="btn sm g" type="button" data-act="ionConfirmProduct" style="font-weight:600">✓ 确定</button>'+
       '<button class="btn sm p" type="button" data-act="ionAddProduct">+ 新增产品行</button>'+
     '</div>'+
     '<div id="ion_autoHint" class="srcline" style="margin-top:4px;display:none"></div>'+
@@ -2764,6 +2765,34 @@ function ionLoadProduct(){
   if(!hits.length){ toast('未匹配到合同，可手动「+ 新增产品行」'); return; }
   ionLoadProductOptions(hits);
   toast('已加载 '+hits.length+' 个合同产品');
+}
+
+/* 预通知：用户在下拉选产品后点「✓ 确定」→ 把产品名 + 推断的仓库写入第一个空行 */
+function ionConfirmProduct(){
+  var sel=document.getElementById('ion_product');
+  if(!sel){ toast('产品下拉不存在'); return; }
+  var product=sel.value;
+  if(!product){ toast('请先在下拉里选一个产品'); return; }
+  // 组装 pid（归一）
+  var pid='LB-'+val('ion_year')+(val('ion_mode')==='外贸（J）'?'-J':'')+(val('ion_no')?'-'+val('ion_no'):'');
+  pid=pid.replace(/-+$/,'');
+  // 仓库推断（用项目号+产品型号）
+  var guessed=_v9ioGuessWh(pid, product);
+  // 找第一个空产品行（product 空即视为空行；qty 有也行）
+  var targetIdx=-1;
+  for(var i=0;i<_IO_NOTICE_ROWS.length;i++){
+    if(!_IO_NOTICE_ROWS[i].product){ targetIdx=i; break; }
+  }
+  if(targetIdx<0){
+    _IO_NOTICE_ROWS.push({wh:guessed||'',date:'',qty:'',vol:'',product:product});
+    targetIdx=_IO_NOTICE_ROWS.length-1;
+  } else {
+    _IO_NOTICE_ROWS[targetIdx].product=product;
+    if(guessed && !_IO_NOTICE_ROWS[targetIdx].wh){ _IO_NOTICE_ROWS[targetIdx].wh=guessed; }
+  }
+  _ionRenderRows();
+  if(guessed){ toast('已导入产品「'+product.slice(0,14)+'…」+ 仓库「'+guessed+'」'); }
+  else { toast('已导入产品「'+product.slice(0,14)+'…」（未识别仓库，请手动选）'); }
 }
 
 /* 预通知：增加/删除产品行 */
@@ -4035,6 +4064,7 @@ document.addEventListener('click',function(e){
   if(act==='ionAddProduct' || act==='ionAddRow'){ ionAddRow(); return; }
   if(act==='ionDelRow'){ ionDelRow(+id); return; }
   if(act==='ionLoadProduct'){ ionLoadProduct(); return; }
+  if(act==='ionConfirmProduct'){ ionConfirmProduct(); return; }
   if(act==='ionAddCustomer'){ ionAddCustomer(); return; }
   if(act==='ionDelCustomer'){ ionDelCustomer(+id); return; }
   if(act==='ionSave'){ ionSave(); return; }
