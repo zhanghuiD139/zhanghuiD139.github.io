@@ -2512,27 +2512,37 @@ function ioFormV9(t){
    - 多产品行（可一次新增/删除若干产品行，每行独立的 入库/出库 日期+数量+体积）
    - 司机信息板块
    - 底部按钮：取消 / 下载图片（保存+复制两种） / 保存至新增出入库 */
-var _IO_NOTICE_ROWS = []; // 当前的产品行（每条：{wh, inDate, inQty, inVol, outDate, outQty, outVol, note}）
-function _ionRowBlank(){ return {wh:'',inDate:'',inQty:'',inVol:'',outDate:'',outQty:'',outVol:'',note:''}; }
+var _IO_NOTICE_ROWS = []; // 当前的产品行（每条：{wh, product, date, qty, vol, note}）
+var _IO_NOTICE_DIR = 'in'; // 整张通知方向：'in'入库 / 'out'出库（一次只一种）
+function _ionRowBlank(){ return {wh:'',product:'',date:'',qty:'',vol:'',note:''}; }
+/* 预通知：单产品卡片行（不挤，整张通知只一个方向：入 或 出） */
 function _ionRenderRows(){
   var tb=document.getElementById('ionRows');
   if(!tb) return;
   if(!_IO_NOTICE_ROWS.length) _IO_NOTICE_ROWS=[_ionRowBlank()];
   var _wh=v9ioWhList();
   var whOpts='<option value="">请选择仓库</option>'+_wh.map(function(w){return '<option value="'+esc(w)+'">'+esc(w)+'</option>'}).join('');
+  var dirLabel=_IO_NOTICE_DIR==='in'?'入库':'出库';
+  var dirColor=_IO_NOTICE_DIR==='in'?'var(--green)':'var(--red)';
   var html=_IO_NOTICE_ROWS.map(function(r,i){
     return '<tr data-i="'+i+'" style="border-top:1px solid var(--border)">'+
-      '<td style="padding:6px 4px"><select data-f="wh" style="width:100%;height:28px;font-size:12px;padding:0 4px;border:1px solid #E8D9BE;border-radius:6px;background:#fff">'+whOpts+'</select></td>'+
-      '<td style="padding:6px 4px"><input type="text" data-f="product" value="'+esc(r.product||'')+'" placeholder="产品名" style="width:100%;height:28px;font-size:12px;padding:0 6px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
-      '<td style="padding:6px 4px"><input type="date" data-f="inDate" value="'+esc(r.inDate||'')+'" style="width:100%;height:28px;font-size:12px;padding:0 4px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
-      '<td style="padding:6px 4px"><input type="number" data-f="inQty" value="'+esc(r.inQty||'')+'" placeholder="件/台/箱" style="width:100%;height:28px;font-size:12px;padding:0 4px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
-      '<td style="padding:6px 4px"><input type="date" data-f="outDate" value="'+esc(r.outDate||'')+'" style="width:100%;height:28px;font-size:12px;padding:0 4px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
-      '<td style="padding:6px 4px"><input type="number" data-f="outQty" value="'+esc(r.outQty||'')+'" placeholder="件/台/箱" style="width:100%;height:28px;font-size:12px;padding:0 4px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
-      '<td style="padding:6px 4px;text-align:center"><button type="button" data-act="ionDelRow" data-i="'+i+'" style="background:transparent;border:1px solid var(--red-l);color:var(--red);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">'+ic('trash','currentColor',12)+'</button></td>'+
+      '<td style="padding:8px 6px;width:160px"><select data-f="wh" style="width:100%;height:32px;font-size:12.5px;padding:0 6px;border:1px solid #E8D9BE;border-radius:6px;background:#fff">'+whOpts+'</select></td>'+
+      '<td style="padding:8px 6px"><input type="text" data-f="product" value="'+esc(r.product||'')+'" placeholder="产品名称" style="width:100%;height:32px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
+      '<td style="padding:8px 6px"><input type="text" data-f="vol" value="'+esc(r.vol||'')+'" placeholder="箱/板等" style="width:100%;height:32px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
+      '<td style="padding:8px 6px;width:140px"><input type="date" data-f="date" value="'+esc(r.date||'')+'" style="width:100%;height:32px;font-size:12.5px;padding:0 6px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
+      '<td style="padding:8px 6px;width:110px"><input type="number" data-f="qty" value="'+esc(r.qty||'')+'" placeholder="数量" style="width:100%;height:32px;font-size:13px;font-weight:600;padding:0 6px;border:1px solid #E8D9BE;border-radius:6px;background:#fff;color:'+dirColor+'"></td>'+
+      '<td style="padding:8px 6px;width:50px;text-align:center"><button type="button" data-act="ionDelRow" data-i="'+i+'" style="background:transparent;border:1px solid var(--red-l);color:var(--red);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer">'+ic('trash','currentColor',12)+'</button></td>'+
     '</tr>';
   }).join('');
   tb.innerHTML=html;
-  // 同步数据回 _IO_NOTICE_ROWS
+  // 还原已选中的仓库
+  Array.from(tb.querySelectorAll('tr')).forEach(function(tr){
+    var i=+tr.getAttribute('data-i');
+    if(!_IO_NOTICE_ROWS[i]) _IO_NOTICE_ROWS[i]=_ionRowBlank();
+    var sel=tr.querySelector('[data-f="wh"]');
+    if(sel && _IO_NOTICE_ROWS[i].wh){ sel.value=_IO_NOTICE_ROWS[i].wh; }
+  });
+  // 同步 _IO_NOTICE_ROWS
   Array.from(tb.querySelectorAll('tr')).forEach(function(tr){
     var i=+tr.getAttribute('data-i');
     if(!_IO_NOTICE_ROWS[i]) _IO_NOTICE_ROWS[i]=_ionRowBlank();
@@ -2550,34 +2560,41 @@ function ioNoticeForm(){
   // 仓库列表
   var _whList=v9ioWhList();
   if(!_IO_NOTICE_ROWS.length) _IO_NOTICE_ROWS=[_ionRowBlank()];
+  if(!_IO_NOTICE_DIR) _IO_NOTICE_DIR='in';
   return '<div id="ioNotice_body" style="font-size:13px">'+
-  /* ===== 项目号 / 采购合同号 / 销售合同号 ===== */
-  '<div style="display:flex;flex-wrap:wrap;gap:14px">'+
-    '<div style="flex:1.4;min-width:280px"><label class="fl">项目号</label>'+
-      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">'+
-        '<span style="font-weight:700;font-size:13px">LB-</span>'+
-        '<select id="ion_year" onchange="ionPreviewPid()" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
-          _years.map(function(y){return '<option value="'+y+'"'+(y==='2026'?' selected':'')+'>'+y+'</option>'}).join('')+
-        '</select>'+
-        '<select id="ion_mode" onchange="ionPreviewPid()" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
-          '<option value="内贸" selected>（内贸）</option><option value="外贸（J）">（外贸 J）</option>'+
-        '</select>'+
-        '<span style="font-weight:700">-</span>'+
-        '<input type="text" id="ion_no" oninput="ionPreviewPid()" placeholder="编号" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:130px;background:#fff">'+
-      '</div>'+
-      '<div id="ion_pidPreview" class="srcline" style="margin-top:4px;color:var(--red)">预览：LB-2026-</div>'+
+  /* ===== 1. 项目号 ===== */
+  '<div style="margin-bottom:12px"><label class="fl">项目号</label>'+
+    '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">'+
+      '<span style="font-weight:700;font-size:13px">LB-</span>'+
+      '<select id="ion_year" onchange="ionPreviewPid();ionAutoFill()" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
+        _years.map(function(y){return '<option value="'+y+'"'+(y==='2026'?' selected':'')+'>'+y+'</option>'}).join('')+
+      '</select>'+
+      '<select id="ion_mode" onchange="ionPreviewPid();ionAutoFill()" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
+        '<option value="内贸" selected>（内贸）</option><option value="外贸（J）">（外贸 J）</option>'+
+      '</select>'+
+      '<span style="font-weight:700">-</span>'+
+      '<input type="text" id="ion_no" oninput="ionPreviewPid();ionAutoFill()" placeholder="编号 如 091" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:150px;background:#fff">'+
     '</div>'+
-    '<div style="flex:1;min-width:220px"><label class="fl">采购合同号</label>'+
-      '<input type="text" id="ion_buy" oninput="ionAutoFill()" placeholder="联动产品" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-    '<div style="flex:1;min-width:220px"><label class="fl">销售合同号</label>'+
-      '<input type="text" id="ion_sale" oninput="ionAutoFill()" placeholder="联动产品" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
+    '<div id="ion_pidPreview" class="srcline" style="margin-top:4px;color:var(--red)">预览：LB-2026-</div>'+
   '</div>'+
-  /* ===== 加载产品（联动） ===== */
-  '<div style="margin-top:14px"><label class="fl">产品（上方项目号/合同号联动）</label>'+
+  /* ===== 2. 采购合同号 ===== */
+  '<div style="margin-bottom:12px"><label class="fl">采购合同号</label>'+
+    '<input type="text" id="ion_buy" oninput="ionAutoFill()" placeholder="联动：填一个关键字段，带出全部（项目号/采购合同号/销售合同号/销售下家）" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
+  '</div>'+
+  /* ===== 3. 销售合同号（窄） ===== */
+  '<div style="margin-bottom:12px"><label class="fl">销售合同号</label>'+
+    '<input type="text" id="ion_sale" oninput="ionAutoFill()" placeholder="联动（同上）" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
+  '</div>'+
+  /* ===== 4. 销售端下家（紧跟在销售合同号后面） ===== */
+  '<div style="margin-bottom:12px"><label class="fl" style="display:flex;align-items:center;gap:8px">'+
+    '销售端下家'+
+    '<button type="button" class="btn sm" data-act="ionAddCustomer" style="margin-left:auto">+ 新增下家</button>'+
+  '</label>'+
+  '<div id="ion_customers" style="margin-top:6px"></div></div>'+
+  /* ===== 5. 加载产品（联动提示） ===== */
+  '<div style="margin-bottom:12px"><label class="fl">产品（上方合同号联动加载）</label>'+
     '<div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">'+
-      '<select id="ion_product" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;flex:1;min-width:220px;background:#fff">'+
+      '<select id="ion_product" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;flex:1;min-width:200px;background:#fff">'+
         '<option value="">（填写项目号/合同号后点「加载产品」）</option>'+
       '</select>'+
       '<button class="btn sm" type="button" data-act="ionLoadProduct">⟳ 加载产品</button>'+
@@ -2585,47 +2602,54 @@ function ioNoticeForm(){
     '</div>'+
     '<div id="ion_autoHint" class="srcline" style="margin-top:4px;display:none"></div>'+
   '</div>'+
-  /* ===== 多产品行表格 ===== */
-  '<div style="margin-top:14px;border:1px solid var(--border);border-radius:8px;overflow:hidden">'+
-    '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+  /* ===== 6. 通知方向（整张通知只能入 or 出） ===== */
+  '<div style="margin-bottom:12px"><label class="fl">通知方向</label>'+
+    '<div style="display:flex;gap:8px;margin-top:4px">'+
+      '<label class="dir-opt" data-d="in" style="flex:1;display:flex;align-items:center;gap:6px;padding:10px 12px;border:1px solid #E8D9BE;border-radius:8px;cursor:pointer;background:'+(_IO_NOTICE_DIR==='in'?'#FFF1DC':'')+'">'+
+        '<input type="radio" name="ion_dir" value="in" ' +(_IO_NOTICE_DIR==='in'?'checked':'')+' onchange="ionDirChange(\'in\')" style="accent-color:#ED7A1A">'+
+        '<span style="font-size:13px;font-weight:600">📥 通知入库</span>'+
+      '</label>'+
+      '<label class="dir-opt" data-d="out" style="flex:1;display:flex;align-items:center;gap:6px;padding:10px 12px;border:1px solid #E8D9BE;border-radius:8px;cursor:pointer;background:'+(_IO_NOTICE_DIR==='out'?'#FFEAEA':'')+'">'+
+        '<input type="radio" name="ion_dir" value="out" ' +(_IO_NOTICE_DIR==='out'?'checked':'')+' onchange="ionDirChange(\'out\')" style="accent-color:#E25151">'+
+        '<span style="font-size:13px;font-weight:600">📤 通知出库</span>'+
+      '</label>'+
+    '</div>'+
+    '<div class="srcline" style="margin-top:4px">提示：同一张预通知只能是一种方向——同一项目号下若要另一方向，请再做一张。</div>'+
+  '</div>'+
+  /* ===== 7. 多产品行表格（仓库+产品+体积+日期+数量） ===== */
+  '<div style="margin-bottom:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden">'+
+    '<table style="width:100%;border-collapse:collapse;font-size:12.5px">'+
       '<thead style="background:var(--card-h)">'+
         '<tr>'+
-          '<th style="padding:8px 4px;text-align:left;font-weight:600;color:var(--t2);width:120px">仓库</th>'+
-          '<th style="padding:8px 4px;text-align:left;font-weight:600;color:var(--t2)">产品</th>'+
-          '<th style="padding:8px 4px;text-align:left;font-weight:600;color:var(--green);width:120px">入库日期</th>'+
-          '<th style="padding:8px 4px;text-align:left;font-weight:600;color:var(--green);width:90px">入库数量</th>'+
-          '<th style="padding:8px 4px;text-align:left;font-weight:600;color:var(--red);width:120px">出库日期</th>'+
-          '<th style="padding:8px 4px;text-align:left;font-weight:600;color:var(--red);width:90px">出库数量</th>'+
-          '<th style="padding:8px 4px;width:50px"></th>'+
+          '<th style="padding:10px 6px;text-align:left;font-weight:600;color:var(--t2);width:160px">仓库</th>'+
+          '<th style="padding:10px 6px;text-align:left;font-weight:600;color:var(--t2)">产品</th>'+
+          '<th style="padding:10px 6px;text-align:left;font-weight:600;color:var(--t2);width:140px">规格/体积</th>'+
+          '<th style="padding:10px 6px;text-align:left;font-weight:600;color:var(--t2);width:140px">日期</th>'+
+          '<th style="padding:10px 6px;text-align:left;font-weight:600;width:110px" id="ion_th_qty"><span style="color:'+(_IO_NOTICE_DIR==='in'?'var(--green)':'var(--red)')+'">数量</span></th>'+
+          '<th style="padding:10px 6px;width:50px"></th>'+
         '</tr>'+
       '</thead>'+
       '<tbody id="ionRows"></tbody>'+
     '</table>'+
   '</div>'+
-  '<div class="srcline" style="margin-top:6px">提示：每个产品独立设置入/出库日期和数量。一行可只填入库或只填出库，也可同时填。</div>'+
-  /* ===== 销售端下家 ===== */
-  '<div style="margin-top:14px"><label class="fl" style="display:flex;align-items:center;gap:8px">'+
-    '销售端下家'+
-    '<button type="button" class="btn sm" data-act="ionAddCustomer" style="margin-left:auto">+ 新增下家</button>'+
-  '</label>'+
-  '<div id="ion_customers" style="margin-top:6px"></div></div>'+
-  /* ===== 司机信息 ===== */
-  '<div style="margin-top:14px;border:1px dashed var(--border);border-radius:8px;padding:10px">'+
+  '<div class="srcline" style="margin-top:-6px;margin-bottom:12px">提示：每个产品单独一行；同一项目号同一方向可一次列多个型号。</div>'+
+  /* ===== 8. 司机信息 ===== */
+  '<div style="margin-bottom:12px;border:1px dashed var(--border);border-radius:8px;padding:10px">'+
     '<div style="font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px">'+ic('truck','var(--t2)',15)+'司机信息</div>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-      '<div style="flex:1;min-width:160px"><label class="fl">司机姓名</label><input type="text" id="ion_drvName" placeholder="如 张师傅" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
-      '<div style="flex:1;min-width:160px"><label class="fl">司机电话</label><input type="text" id="ion_drvPhone" placeholder="如 138xxxx" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
-      '<div style="flex:1;min-width:160px"><label class="fl">车牌号</label><input type="text" id="ion_drvPlate" placeholder="如 鄂A·12345" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
+      '<div style="flex:1;min-width:160px"><label class="fl">司机姓名</label><input type="text" id="ion_drvName" placeholder="如 张师傅" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
+      '<div style="flex:1;min-width:160px"><label class="fl">司机电话</label><input type="text" id="ion_drvPhone" placeholder="如 138xxxx" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
+      '<div style="flex:1;min-width:160px"><label class="fl">车牌号</label><input type="text" id="ion_drvPlate" placeholder="如 鄂A·12345" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
     '</div>'+
   '</div>'+
-  /* ===== 本表备注 ===== */
-  '<div style="margin-top:14px"><label class="fl">本表备注</label>'+
-    '<textarea id="ion_note" rows="2" placeholder="选填（如提货客户/单据号/特殊说明）" style="width:100%;font-size:12.5px;padding:6px 8px;border:1px solid #E8D9BE;border-radius:8px;margin-top:4px;background:#fff;resize:vertical"></textarea>'+
+  /* ===== 9. 本表备注 ===== */
+  '<div style="margin-bottom:6px"><label class="fl">本表备注</label>'+
+    '<textarea id="ion_note" rows="2" placeholder="选填（如提货客户/单据号/特殊说明）" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #E8D9BE;border-radius:8px;margin-top:4px;background:#fff;resize:vertical"></textarea>'+
   '</div>'+
-  /* ===== 图片预览 canvas（隐藏，用来下载图片） ===== */
+  /* ===== 隐藏 canvas ===== */
   '<canvas id="ion_canvas" style="display:none"></canvas>'+
   '</div>'+
-  /* ===== 自定义底部按钮（取消/下载图片/保存至新增出入库） ===== */
+  /* ===== 自定义底部按钮 ===== */
   '<div id="ion_customFoot" style="display:flex;gap:8px;margin-top:20px;flex-wrap:wrap">'+
     '<button class="btn" data-act="ionCancel" style="flex:1;min-width:90px">取消</button>'+
     '<div style="flex:2;display:flex;gap:8px;min-width:240px">'+
@@ -2634,6 +2658,18 @@ function ioNoticeForm(){
     '</div>'+
     '<button class="btn p" data-act="ionSave" style="flex:2;min-width:200px">'+ic('plus','#fff',14)+'保存至新增出入库</button>'+
   '</div>';
+}
+/* 预通知：通知方向切换 */
+function ionDirChange(d){
+  _IO_NOTICE_DIR=d;
+  // 切换卡片标签/颜色
+  var ds=document.querySelectorAll('label.dir-opt');
+  ds.forEach(function(l){
+    var od=l.getAttribute('data-d');
+    if(od==='in'){ l.style.background = (d==='in'?'#FFF1DC':''); }
+    else if(od==='out'){ l.style.background = (d==='out'?'#FFEAEA':''); }
+  });
+  _ionRenderRows();
 }
 
 /* 预通知：项目号预览 */
@@ -2656,13 +2692,14 @@ function ionAutoFill(){
     if(!hit && sale){ hit=sb.find(function(r){return r.sale===sale}); }
     var hint=document.getElementById('ion_autoHint');
     if(hit){
-      // 反向回填项目号字段
-      if(!val('ion_no') && hit.pid){
+      // 反向回填项目号字段（只填空，不覆盖用户已输入的）
+      if(hit.pid){
         var parts=hit.pid.split('-'); // ['LB','2026','J','091']
         if(parts.length>=3){
-          val_set('ion_year', parts[1]||'2026');
-          if(parts[2]==='J'){ val_set('ion_mode','外贸（J）'); } else { val_set('ion_mode','内贸'); }
-          val_set('ion_no', parts.slice(parts[2]==='J'?3:2).join('-')||hit.no||'');
+          if(!val('ion_year')) val_set('ion_year', parts[1]||'2026');
+          var wantMode=parts[2]==='J'?'外贸（J）':'内贸';
+          if(!val('ion_mode')) val_set('ion_mode', wantMode);
+          if(!val('ion_no')) val_set('ion_no', parts.slice(parts[2]==='J'?3:2).join('-')||hit.no||'');
           ionPreviewPid();
         }
       }
@@ -2757,53 +2794,46 @@ function ionDelCustomer(i){
 /* 预通知：收集表单 → 转为多张出入库条目（保存到本地 io + v9io_pending 队列） */
 function ionCollect(){
   _ionRenderRows(); // 同步最新输入
+  var dir=_IO_NOTICE_DIR||'in';
   var pid='LB-'+val('ion_year')+(val('ion_mode')==='外贸（J）'?'-J':'')+(val('ion_no')?'-'+val('ion_no'):'');
   pid=pid.replace(/-+$/,'');
   var buy=val('ion_buy').trim(), sale=val('ion_sale').trim();
   var note=val('ion_note').trim();
   var drvName=val('ion_drvName').trim(), drvPhone=val('ion_drvPhone').trim(), drvPlate=val('ion_drvPlate').trim();
   var customers=Array.from(document.querySelectorAll('#ion_customers [data-f="customer"]')).map(function(el){return el.value.trim()}).filter(Boolean);
-  // 校验
   if(!pid && !buy && !sale){
     toast('请至少填写项目号/采购合同号/销售合同号之一');
     return null;
   }
   var rows=_IO_NOTICE_ROWS.filter(function(r){
-    return (r.wh&&(r.inQty||r.outQty))||r.product;
+    return (r.wh && r.qty) || r.product;
   });
   if(!rows.length){
     toast('请至少添加一条产品行（仓库+数量 或 产品名）');
     return null;
   }
-  // 每行：构建 io item + sheet draft
   var ts=Date.now();
   var ioItems=[], sheets=[], idx=0;
+  var driverInfo=(drvName||drvPhone||drvPlate)?('司机：'+(drvName||'?')+' / '+(drvPhone||'?')+' / '+(drvPlate||'?')):'';
+  var custStr=customers.length?'下家：'+customers.join('、'):'';
   rows.forEach(function(r){
-    var driverInfo=(drvName||drvPhone||drvPlate)?('司机：'+(drvName||'?')+' / '+(drvPhone||'?')+' / '+(drvPlate||'?')):'';
-    var extraNote=[customers.length?'下家：'+customers.join('、'):'', driverInfo].filter(Boolean).join(' · ');
+    var extraNote=[custStr, driverInfo].filter(Boolean).join(' · ');
     var fullNote=(note?note:'')+(/[，。,]/.test(note)?' · ':'')+extraNote;
-    if(r.inQty){
-      var li={id:'ion_'+ts+'_'+idx,type:'in',date:r.inDate||today(),wh:r.wh,item:r.product||'',qty:+r.inQty||0,price:'',cur:'',
-        project:pid,note:fullNote};
-      var sh={dir:'入',date:li.date,pid:pid,contract:buy||sale||'',model:r.product||'',
-        wh:r.wh,qty:+r.inQty||0,amt:0,price:0,buy:buy,sale:sale,cur:'',vol:r.inVol||'',note:fullNote,ts:ts};
-      ioItems.push(li); sheets.push(sh);
-      idx++;
-    }
-    if(r.outQty){
-      var li2={id:'ion_'+ts+'_'+idx,type:'out',date:r.outDate||today(),wh:r.wh,item:r.product||'',qty:+r.outQty||0,price:'',cur:'',
-        project:pid,note:fullNote};
-      var sh2={dir:'出',date:li2.date,pid:pid,contract:buy||sale||'',model:r.product||'',
-        wh:r.wh,qty:+r.outQty||0,amt:0,price:0,buy:buy,sale:sale,cur:'',vol:r.outVol||'',note:fullNote,ts:ts};
-      ioItems.push(li2); sheets.push(sh2);
-      idx++;
-    }
+    var rdate=r.date||today();
+    var rqty=+r.qty||0;
+    if(!rqty) return;
+    var li={id:'ion_'+ts+'_'+idx,type:dir,date:rdate,wh:r.wh,item:r.product||'',qty:rqty,price:'',cur:'',
+      project:pid,note:fullNote};
+    var sh={dir:dir==='in'?'入':'出',date:rdate,pid:pid,contract:buy||sale||'',model:r.product||'',
+      wh:r.wh,qty:rqty,amt:0,price:0,buy:buy,sale:sale,cur:'',vol:r.vol||'',note:fullNote,ts:ts};
+    ioItems.push(li); sheets.push(sh);
+    idx++;
   });
   if(!sheets.length){
-    toast('请填写产品的入库数量或出库数量');
+    toast('请填写产品的数量');
     return null;
   }
-  return {pid:pid,buy:buy,sale:sale,note:note,drv:{n:drvName,p:drvPhone,pl:drvPlate},customers:customers,rows:rows,items:ioItems,sheets:sheets,ts:ts};
+  return {pid:pid,buy:buy,sale:sale,note:note,drv:{n:drvName,p:drvPhone,pl:drvPlate},customers:customers,rows:rows,dir:dir,items:ioItems,sheets:sheets,ts:ts};
 }
 
 /* 预通知：保存至本地 io + pending 队列 */
@@ -2838,9 +2868,11 @@ function ionRenderCanvas(){
   // 移动端画布：宽度按内容定（WeChat 适合 ~720px 宽），用 2x DPR 出清晰图
   var dpr=window.devicePixelRatio||1;
   var W=720, pad=20, lineH=22, titleH=42;
+  var dirLabel=d.dir==='in'?'入库通知':'出库通知';
+  var dirColor=d.dir==='in'?'#0a8b3e':'#c0392b';
   // 估算高度
   var rowH=46;
-  var H=titleH + 30 + 30 + 30 + 30 + 20 + 20 + d.rows.length*rowH + 30 + 30 + 30 + 30 + 40 + 30;
+  var H=titleH + 30 + 30 + 30 + 30 + 30 + 20 + 20 + d.rows.length*rowH + 30 + 30 + 30 + 30 + 40 + 30;
   H=Math.max(420, H);
   cv.width=W*dpr; cv.height=H*dpr;
   cv.style.width=W+'px'; cv.style.height=H+'px';
@@ -2850,7 +2882,7 @@ function ionRenderCanvas(){
   ctx.fillStyle='#FFFCF5'; ctx.fillRect(0,0,W,H);
   // 标题
   ctx.fillStyle='#ED7A1A'; ctx.font='700 18px "PingFang SC","Microsoft YaHei",sans-serif';
-  ctx.fillText('📦 出入库预通知', pad, 28);
+  ctx.fillText('📦 出入库预通知 · '+dirLabel, pad, 28);
   // 时间戳
   ctx.fillStyle='#888'; ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';
   ctx.textAlign='right';
@@ -2882,7 +2914,7 @@ function ionRenderCanvas(){
   if(d.note){ kv('备注', d.note); }
   // 表格标题
   y+=4;
-  ctx.fillStyle='#222'; ctx.font='600 13px sans-serif'; ctx.fillText('出入库明细', pad, y); y+=4;
+  ctx.fillStyle='#222'; ctx.font='600 13px sans-serif'; ctx.fillText(d.dir==='in'?'入库明细':'出库明细', pad, y); y+=4;
   ctx.strokeStyle='#E8D9BE'; ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W-pad, y); ctx.stroke();
   y+=12;
   // 表头
@@ -2890,28 +2922,27 @@ function ionRenderCanvas(){
   ctx.fillStyle='#666'; ctx.font='600 11.5px sans-serif';
   var cols=[
     {k:'仓库',x:pad+4,w:80},
-    {k:'产品',x:pad+88,w:200},
-    {k:'入库日期',x:pad+292,w:90},
-    {k:'入库数',x:pad+386,w:60},
-    {k:'出库日期',x:pad+450,w:90},
-    {k:'出库数',x:pad+544,w:60}
+    {k:'产品',x:pad+88,w:240},
+    {k:'规格/体积',x:pad+332,w:90},
+    {k:'日期',x:pad+426,w:110},
+    {k:'数量',x:pad+540,w:80}
   ];
   cols.forEach(function(c){ ctx.fillText(c.k, c.x, y+4); });
   y+=18;
   // 行
   d.rows.forEach(function(r){
-    var hasIn=!!(r.inQty&&r.inQty>0), hasOut=!!(r.outQty&&r.outQty>0);
-    if(!hasIn && !hasOut) return;
+    var hasQty=!!(+r.qty>0);
+    if(!hasQty) return;
     // 截断产品名
     var prodTxt=String(r.product||'—');
-    if(ctx.measureText(prodTxt).width>200){ while(ctx.measureText(prodTxt+'…').width>200 && prodTxt.length>0) prodTxt=prodTxt.slice(0,-1); prodTxt+='…'; }
+    if(ctx.measureText(prodTxt).width>240){ while(ctx.measureText(prodTxt+'…').width>240 && prodTxt.length>0) prodTxt=prodTxt.slice(0,-1); prodTxt+='…'; }
     ctx.fillStyle='#222'; ctx.font='12px sans-serif';
     ctx.fillText((r.wh||'—'), pad+4, y);
     ctx.fillText(prodTxt, pad+88, y);
-    ctx.fillStyle='#0a8b3e'; ctx.fillText(hasIn?(r.inDate||'—'):'—', pad+292, y);
-    ctx.fillText(hasIn?r.inQty:'—', pad+386, y);
-    ctx.fillStyle='#c0392b'; ctx.fillText(hasOut?(r.outDate||'—'):'—', pad+450, y);
-    ctx.fillText(hasOut?r.outQty:'—', pad+544, y);
+    ctx.fillStyle='#666'; ctx.fillText(r.vol||'—', pad+332, y);
+    ctx.fillStyle='#666'; ctx.fillText(r.date||'—', pad+426, y);
+    ctx.fillStyle=dirColor; ctx.font='600 13px sans-serif';
+    ctx.fillText(String(r.qty||'—'), pad+540, y);
     ctx.strokeStyle='#F2E8D0'; ctx.beginPath(); ctx.moveTo(pad, y+6); ctx.lineTo(W-pad, y+6); ctx.stroke();
     y+=rowH;
   });
@@ -3977,6 +4008,7 @@ document.addEventListener('click',function(e){
   if(act==='addIoNotice'){
     state.ioFormStep='form'; state.ioFormDraft=null;
     _IO_NOTICE_ROWS=[_ionRowBlank()];
+    _IO_NOTICE_DIR='in'; // 默认入库方向
     openModal('出入库预通知（生成图片通知）',ioNoticeForm(),'',null,{icon:'paper',okText:'',cancelText:''});
     /* 自定义底部按钮已内嵌（取消/下载图片·保存/下载图片·复制/保存至新增出入库） → 隐藏默认 mfoot */
     var mf=document.querySelector('#mask .mfoot');
@@ -4261,7 +4293,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v29.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v30.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
