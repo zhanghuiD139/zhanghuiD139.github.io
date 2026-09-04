@@ -2518,6 +2518,7 @@ var _ION_SAVED_RESTART_T = null; // 保存成功后 3.5s 定时器（点「再�
 function _ionRowBlank(){ return {wh:'',product:'',date:'',qty:'',vol:'',note:''}; }
 /* 预通知：同步单个 input/select → _IO_NOTICE_ROWS（用户输入时实时调用，不破坏 DOM） */
 function _ionSyncField(el){
+  el._ionTouched=true; // 标记被用户碰过，_ionRenderRows 才回写
   var tr=el.closest&&el.closest('tr');
   if(!tr) return;
   var i=+tr.getAttribute('data-i');
@@ -2527,16 +2528,17 @@ function _ionSyncField(el){
   _IO_NOTICE_ROWS[i][f]=el.value;
 }
 /* 预通知：单产品卡片行（分两行：上行产品+数量；下行仓库+日期；整张通知只一个方向）
-   【重要】渲染前先同步现有 DOM input → _IO_NOTICE_ROWS，避免重建 DOM 覆盖用户刚填的数据 */
+   【重要】渲染前先同步「用户碰过的」DOM input → _IO_NOTICE_ROWS，避免重建 DOM 覆盖用户刚填的数据 */
 function _ionRenderRows(){
   var tb=document.getElementById('ionRows');
   if(!tb) return;
   if(!_IO_NOTICE_ROWS.length) _IO_NOTICE_ROWS=[_ionRowBlank()];
-  /* === 第一步（非破坏性）：先把现有 DOM input 值同步到 _IO_NOTICE_ROWS === */
+  /* === 第一步（非破坏性）：先把现有 DOM input 值同步到 _IO_NOTICE_ROWS —— 只同步用户碰过的（_ionTouched） */
   Array.from(tb.querySelectorAll('tr')).forEach(function(tr){
     var i=+tr.getAttribute('data-i');
     if(isNaN(i) || !_IO_NOTICE_ROWS[i]) return;
     tr.querySelectorAll('[data-f]').forEach(function(el){
+      if(!el._ionTouched) return; // 新建未碰过的 input 不覆盖 _IO_NOTICE_ROWS 中已有的值
       _IO_NOTICE_ROWS[i][el.getAttribute('data-f')]=el.value;
     });
   });
@@ -2799,12 +2801,15 @@ function ionConfirmProduct(){
     if(!_IO_NOTICE_ROWS[i].product){ targetIdx=i; break; }
   }
   if(targetIdx<0){
-    _IO_NOTICE_ROWS.push({wh:guessed||'',date:'',qty:'',vol:'',product:product});
+    _IO_NOTICE_ROWS.push({wh:guessed||'',date:'',qty:'',vol:'',note:'',product:product});
     targetIdx=_IO_NOTICE_ROWS.length-1;
   } else {
     _IO_NOTICE_ROWS[targetIdx].product=product;
     if(guessed && !_IO_NOTICE_ROWS[targetIdx].wh){ _IO_NOTICE_ROWS[targetIdx].wh=guessed; }
   }
+  // 重新渲染前，清掉现有所有 input 的 _ionTouched 标记（确定按钮是「覆盖式」操作，避免 _ionRenderRows 步骤1 把旧 DOM 值覆盖回 _IO_NOTICE_ROWS）
+  var _tbPre=document.getElementById('ionRows');
+  if(_tbPre){ Array.from(_tbPre.querySelectorAll('[data-f]')).forEach(function(el){ el._ionTouched=false; }); }
   _ionRenderRows();
   if(guessed){ toast('已导入产品「'+product.slice(0,14)+'…」+ 仓库「'+guessed+'」'); }
   else { toast('已导入产品「'+product.slice(0,14)+'…」（未识别仓库，请手动选）'); }
