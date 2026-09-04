@@ -2620,10 +2620,12 @@ function ioNoticeForm(){
   '<div id="ion_customers" style="margin-top:6px"></div></div>'+
   /* ===== 5. 加载产品（联动提示） ===== */
   '<div style="margin-bottom:12px"><label class="fl">产品（上方合同号联动加载）</label>'+
-    '<div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap">'+
-      '<select id="ion_product" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;flex:1;min-width:200px;background:#fff">'+
+    '<div style="display:flex;gap:8px;align-items:center;margin-top:4px">'+
+      '<select id="ion_product" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;flex:1;min-width:0;background:#fff">'+
         '<option value="">（填写项目号/合同号后点「加载产品」）</option>'+
       '</select>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">'+
       '<button class="btn sm" type="button" data-act="ionLoadProduct">⟳ 加载产品</button>'+
       '<button class="btn sm g" type="button" data-act="ionConfirmProduct" style="font-weight:600">✓ 确定</button>'+
       '<button class="btn sm p" type="button" data-act="ionAddProduct">+ 新增产品行</button>'+
