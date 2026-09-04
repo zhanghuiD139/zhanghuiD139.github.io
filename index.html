@@ -2515,7 +2515,7 @@ function ioFormV9(t){
 var _IO_NOTICE_ROWS = []; // 当前的产品行（每条：{wh, product, date, qty, vol, note}）
 var _IO_NOTICE_DIR = 'in'; // 整张通知方向：'in'入库 / 'out'出库（一次只一种）
 function _ionRowBlank(){ return {wh:'',product:'',date:'',qty:'',vol:'',note:''}; }
-/* 预通知：单产品卡片行（不挤，整张通知只一个方向：入 或 出） */
+/* 预通知：单产品卡片行（分两行：上行产品+数量；下行仓库+日期；整张通知只一个方向） */
 function _ionRenderRows(){
   var tb=document.getElementById('ionRows');
   if(!tb) return;
@@ -2526,12 +2526,21 @@ function _ionRenderRows(){
   var dirColor=_IO_NOTICE_DIR==='in'?'var(--green)':'var(--red)';
   var html=_IO_NOTICE_ROWS.map(function(r,i){
     return '<tr data-i="'+i+'" style="border-top:1px solid var(--border)">'+
-      '<td style="padding:8px 6px;width:160px"><select data-f="wh" style="width:100%;height:32px;font-size:12.5px;padding:0 6px;border:1px solid #E8D9BE;border-radius:6px;background:#fff">'+whOpts+'</select></td>'+
-      '<td style="padding:8px 6px"><input type="text" data-f="product" value="'+esc(r.product||'')+'" placeholder="产品名称" style="width:100%;height:32px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
-      '<td style="padding:8px 6px"><input type="text" data-f="vol" value="'+esc(r.vol||'')+'" placeholder="箱/板等" style="width:100%;height:32px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
-      '<td style="padding:8px 6px;width:140px"><input type="date" data-f="date" value="'+esc(r.date||'')+'" style="width:100%;height:32px;font-size:12.5px;padding:0 6px;border:1px solid #E8D9BE;border-radius:6px;background:#fff"></td>'+
-      '<td style="padding:8px 6px;width:110px"><input type="number" data-f="qty" value="'+esc(r.qty||'')+'" placeholder="数量" style="width:100%;height:32px;font-size:13px;font-weight:600;padding:0 6px;border:1px solid #E8D9BE;border-radius:6px;background:#fff;color:'+dirColor+'"></td>'+
-      '<td style="padding:8px 6px;width:50px;text-align:center"><button type="button" data-act="ionDelRow" data-i="'+i+'" style="background:transparent;border:1px solid var(--red-l);color:var(--red);border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer">'+ic('trash','currentColor',12)+'</button></td>'+
+      '<td colspan="6" style="padding:10px 8px">'+
+        /* 第一行：产品 + 数量 + 删除 */
+        '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">'+
+          '<input type="text" data-f="product" value="'+esc(r.product||'')+'" placeholder="产品名称" style="flex:1;min-width:0;height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
+          '<input type="number" data-f="qty" value="'+esc(r.qty||'')+'" placeholder="数量" style="width:96px;height:36px;font-size:13px;font-weight:700;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff;color:'+dirColor+'">'+
+          '<button type="button" data-act="ionDelRow" data-i="'+i+'" style="flex-shrink:0;height:36px;width:36px;background:transparent;border:1px solid var(--red-l);color:var(--red);border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center">'+ic('trash','currentColor',14)+'</button>'+
+        '</div>'+
+        /* 第二行：仓库 + 日期（仓库规格体积保留 data-f=vol 隐藏，确保数据流畅） */
+        '<div style="display:flex;gap:8px;align-items:center">'+
+          '<select data-f="wh" style="flex:1;min-width:0;height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+whOpts+'</select>'+
+          '<input type="date" data-f="date" value="'+esc(r.date||'')+'" style="flex:1;min-width:0;height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
+          /* 保留数据流动，UI 隐藏 */
+          '<input type="hidden" data-f="vol" value="'+esc(r.vol||'')+'">'+
+        '</div>'+
+      '</td>'+
     '</tr>';
   }).join('');
   tb.innerHTML=html;
@@ -2621,23 +2630,17 @@ function ioNoticeForm(){
     '</div>'+
     '<div class="srcline" style="margin-top:4px">提示：同一张预通知只能是一种方向——同一项目号下若要另一方向，请再做一张。</div>'+
   '</div>'+
-  /* ===== 7. 多产品行表格（仓库+产品+体积+日期+数量） ===== */
-  '<div style="margin-bottom:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden">'+
-    '<table style="width:100%;border-collapse:collapse;font-size:12.5px">'+
-      '<thead style="background:var(--card-h)">'+
-        '<tr>'+
-          '<th style="padding:10px 6px;text-align:left;font-weight:600;color:var(--t2);width:160px">仓库</th>'+
-          '<th style="padding:10px 6px;text-align:left;font-weight:600;color:var(--t2)">产品</th>'+
-          '<th style="padding:10px 6px;text-align:left;font-weight:600;color:var(--t2);width:140px">规格/体积</th>'+
-          '<th style="padding:10px 6px;text-align:left;font-weight:600;color:var(--t2);width:140px">日期</th>'+
-          '<th style="padding:10px 6px;text-align:left;font-weight:600;width:110px" id="ion_th_qty"><span style="color:'+(_IO_NOTICE_DIR==='in'?'var(--green)':'var(--red)')+'">数量</span></th>'+
-          '<th style="padding:10px 6px;width:50px"></th>'+
-        '</tr>'+
-      '</thead>'+
+  /* ===== 7. 多产品行表格（每行分两行：产品+数量 / 仓库+日期） ===== */
+  '<div style="margin-bottom:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#FFFCF5">'+
+    '<div style="padding:6px 10px;background:var(--card-h);font-size:11.5px;color:var(--t2);border-bottom:1px solid var(--border);display:flex;gap:8px">'+
+      '<span style="flex:1">⬆ 上行：<span style="color:'+(_IO_NOTICE_DIR==='in'?'var(--green)':'var(--red)')+';font-weight:600">产品</span> + <span style="color:'+(_IO_NOTICE_DIR==='in'?'var(--green)':'var(--red)')+';font-weight:600">数量</span></span>'+
+      '<button type="button" class="btn sm p" data-act="ionAddRow" style="height:24px;padding:0 10px;font-size:11.5px">+ 新增产品行</button>'+
+    '</div>'+
+    '<table style="width:100%;border-collapse:collapse">'+
       '<tbody id="ionRows"></tbody>'+
     '</table>'+
   '</div>'+
-  '<div class="srcline" style="margin-top:-6px;margin-bottom:12px">提示：每个产品单独一行；同一项目号同一方向可一次列多个型号。</div>'+
+  '<div class="srcline" style="margin-top:-6px;margin-bottom:12px">提示：每个产品单独一行；同一项目号同一方向可一次列多个型号。下行填 <span style="color:var(--t2);font-weight:600">仓库</span> 和 <span style="color:var(--t2);font-weight:600">日期</span>。</div>'+
   /* ===== 8. 司机信息 ===== */
   '<div style="margin-bottom:12px;border:1px dashed var(--border);border-radius:8px;padding:10px">'+
     '<div style="font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px">'+ic('truck','var(--t2)',15)+'司机信息</div>'+
@@ -4029,7 +4032,7 @@ document.addEventListener('click',function(e){
   }
   /* —— 出入库预通知 内的按钮 —— */
   if(act==='ionCancel'){ closeModal(); return; }
-  if(act==='ionAddProduct'){ ionAddRow(); return; }
+  if(act==='ionAddProduct' || act==='ionAddRow'){ ionAddRow(); return; }
   if(act==='ionDelRow'){ ionDelRow(+id); return; }
   if(act==='ionLoadProduct'){ ionLoadProduct(); return; }
   if(act==='ionAddCustomer'){ ionAddCustomer(); return; }
