@@ -2659,14 +2659,11 @@ function ioNoticeForm(){
     '</table>'+
   '</div>'+
   '<div class="srcline" style="margin-top:-6px;margin-bottom:12px">提示：每个产品单独一行；同一项目号同一方向可一次列多个型号。下行填 <span style="color:var(--t2);font-weight:600">仓库</span> 和 <span style="color:var(--t2);font-weight:600">日期</span>。</div>'+
-  /* ===== 8. 司机信息 ===== */
+  /* ===== 8. 司机信息（合并：姓名/车牌/电话/身份证 同一文本框，按行或空格分隔） ===== */
   '<div style="margin-bottom:12px;border:1px dashed var(--border);border-radius:8px;padding:10px">'+
-    '<div style="font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px">'+ic('truck','var(--t2)',15)+'司机信息</div>'+
-    '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-      '<div style="flex:1;min-width:160px"><label class="fl">司机姓名</label><input type="text" id="ion_drvName" placeholder="如 张师傅" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
-      '<div style="flex:1;min-width:160px"><label class="fl">司机电话</label><input type="text" id="ion_drvPhone" placeholder="如 138xxxx" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
-      '<div style="flex:1;min-width:160px"><label class="fl">车牌号</label><input type="text" id="ion_drvPlate" placeholder="如 鄂A·12345" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff"></div>'+
-    '</div>'+
+    '<div style="font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px">'+ic('truck','var(--t2)',15)+'司机信息</div>'+
+    '<textarea id="ion_drv" rows="3" placeholder="一行一项，按顺序填写（姓名、车牌号、电话、身份证号）。可换行或空格分隔。" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff;resize:vertical;line-height:1.6;font-family:inherit"></textarea>'+
+    '<div class="srcline" style="margin-top:4px">示例：<code style="background:var(--bg-2);padding:1px 6px;border-radius:4px">张师傅 / 鄂A·12345 / 138xxxx0000 / 4201xxxxxxxxxxxx</code></div>'+
   '</div>'+
   /* ===== 9. 本表备注 ===== */
   '<div style="margin-bottom:6px"><label class="fl">本表备注</label>'+
@@ -2704,21 +2701,28 @@ function ionPreviewPid(){
   var mid=m==='外贸（J）'?'-J':'';
   document.getElementById('ion_pidPreview').textContent='预览：LB-'+y+mid+(n?'-'+n:'');
 }
-/* 预通知：自动从 sheet2_brief 反查（输入项目号或合同号后调用） */
+/* 预通知：自动从 sheet2_brief 反查（输入项目号或合同号后调用）
+   关键：项目号是「权威来源」→ 改项目号时同步覆盖 buy/sale/customer
+        合同号是「辅助来源」→ 只填空 buy/sale/customer，保留用户改的项目号 */
 var _ION_AF_DEBOUNCE=null;
 function ionAutoFill(){
   clearTimeout(_ION_AF_DEBOUNCE);
   _ION_AF_DEBOUNCE=setTimeout(function(){
     var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
     var pidRaw='LB-'+val('ion_year')+(val('ion_mode')==='外贸（J）'?'-J':'')+(val('ion_no')?'-'+val('ion_no'):'');
+    pidRaw=pidRaw.replace(/-+$/,'');
     var buy=val('ion_buy').trim(), sale=val('ion_sale').trim();
-    var hit=null;
-    if(pidRaw.replace(/-+$/,'') && pidRaw.replace(/-+$/,'').length>5){ hit=sb.find(function(r){return r.pid===pidRaw.replace(/-+$/,'')}); }
+    var hint=document.getElementById('ion_autoHint');
+    var hit=null, matchedById=false;
+    /* 优先级：项目号 > 采购合同号 > 销售合同号 */
+    if(pidRaw && pidRaw.length>5){
+      hit=sb.find(function(r){return r.pid===pidRaw});
+      if(hit) matchedById=true;
+    }
     if(!hit && buy){ hit=sb.find(function(r){return r.buy===buy}); }
     if(!hit && sale){ hit=sb.find(function(r){return r.sale===sale}); }
-    var hint=document.getElementById('ion_autoHint');
     if(hit){
-      // 反向回填项目号字段（只填空，不覆盖用户已输入的）
+      /* 回填项目号段（只填空） */
       if(hit.pid){
         var parts=hit.pid.split('-'); // ['LB','2026','J','091']
         if(parts.length>=3){
@@ -2729,25 +2733,40 @@ function ionAutoFill(){
           ionPreviewPid();
         }
       }
-      if(!val('ion_buy') && hit.buy){ val_set('ion_buy', hit.buy); }
-      if(!val('ion_sale') && hit.sale){ val_set('ion_sale', hit.sale); }
-      // 销售端下家：默认填一份
-      if(hit.customer){
-        var box=document.getElementById('ion_customers');
-        if(box && !box.querySelector('[data-idx="0"]')){
-          box.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
-            '<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
-            '<button type="button" class="btn sm" data-act="ionDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'+
-          '</div>';
+      if(matchedById){
+        /* 项目号是权威来源：改项目号 = 换合同主体 → 覆盖 buy/sale/customer */
+        if(hit.buy && val('ion_buy')!==hit.buy){ val_set('ion_buy', hit.buy); }
+        if(hit.sale && val('ion_sale')!==hit.sale){ val_set('ion_sale', hit.sale); }
+        if(hit.customer){
+          var box=document.getElementById('ion_customers');
+          if(box){
+            box.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
+              '<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
+              '<button type="button" class="btn sm" data-act="ionDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'+
+            '</div>';
+          }
+        }
+      } else {
+        /* 合同号是辅助来源：只填空 buy/sale/customer，保留用户改的项目号 */
+        if(!val('ion_buy') && hit.buy){ val_set('ion_buy', hit.buy); }
+        if(!val('ion_sale') && hit.sale){ val_set('ion_sale', hit.sale); }
+        if(hit.customer){
+          var box=document.getElementById('ion_customers');
+          if(box && !box.querySelector('[data-idx="0"]')){
+            box.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
+              '<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
+              '<button type="button" class="btn sm" data-act="ionDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'+
+            '</div>';
+          }
         }
       }
-      // 提示
+      /* 提示 */
       if(hint){
         hint.style.display='inline-flex';
         hint.style.color='var(--green)';
         hint.innerHTML='✓ 已自动匹配合同：'+esc(hit.product||'')+(hit.customer?' · 下家 '+esc(hit.customer):'');
       }
-      // 自动加载产品下拉
+      /* 自动加载产品下拉 */
       ionLoadProductOptions([hit]);
     } else {
       if(hint){ hint.style.display='inline-flex'; hint.style.color='var(--t3)'; hint.innerHTML='未匹配到合同（项目号/合同号可能尚无记录）'; }
@@ -2856,7 +2875,10 @@ function ionCollect(){
   pid=pid.replace(/-+$/,'');
   var buy=val('ion_buy').trim(), sale=val('ion_sale').trim();
   var note=val('ion_note').trim();
-  var drvName=val('ion_drvName').trim(), drvPhone=val('ion_drvPhone').trim(), drvPlate=val('ion_drvPlate').trim();
+  /* 司机信息：1 个 textarea，按行 + 空格/斜杠/逗号分隔 */
+  var drvRaw=val('ion_drv');
+  var drvParts=drvRaw.split(/[\n\r\s\/，,;；]+/).map(function(s){return s.trim()}).filter(Boolean);
+  var drvText=drvParts.length?drvParts.join(' / '):'';
   var customers=Array.from(document.querySelectorAll('#ion_customers [data-f="customer"]')).map(function(el){return el.value.trim()}).filter(Boolean);
   if(!pid && !buy && !sale){
     toast('请至少填写项目号/采购合同号/销售合同号之一');
@@ -2871,7 +2893,7 @@ function ionCollect(){
   }
   var ts=Date.now();
   var ioItems=[], sheets=[], idx=0;
-  var driverInfo=(drvName||drvPhone||drvPlate)?('司机：'+(drvName||'?')+' / '+(drvPhone||'?')+' / '+(drvPlate||'?')):'';
+  var driverInfo=drvText?'司机：'+drvText:'';
   var custStr=customers.length?'下家：'+customers.join('、'):'';
   rows.forEach(function(r){
     var extraNote=[custStr, driverInfo].filter(Boolean).join(' · ');
@@ -2890,7 +2912,7 @@ function ionCollect(){
     toast('请填写产品的数量');
     return null;
   }
-  return {pid:pid,buy:buy,sale:sale,note:note,drv:{n:drvName,p:drvPhone,pl:drvPlate},customers:customers,rows:rows,dir:dir,items:ioItems,sheets:sheets,ts:ts};
+  return {pid:pid,buy:buy,sale:sale,note:note,drv:drvText,customers:customers,rows:rows,dir:dir,items:ioItems,sheets:sheets,ts:ts};
 }
 
 /* 预通知：保存至本地 io + pending 队列 */
@@ -2949,7 +2971,7 @@ function ionRenderCanvas(){
   var dirBgRow2='#FAF6EE';
   // 估算高度
   var rowH=42;
-  var infoRows=4 + (d.drv.n||d.drv.p||d.drv.pl?1:0) + (d.note?1:0);
+  var infoRows=4 + (d.drv?1:0) + (d.note?1:0);
   var H=titleH + 22 + infoRows*30 + 16 + 40 + d.rows.length*rowH + 50 + 30;
   H=Math.max(460, H);
   cv.width=W*dpr; cv.height=H*dpr;
@@ -3017,8 +3039,8 @@ function ionRenderCanvas(){
   kv('采购合同号', d.buy);
   kv('销售合同号', d.sale);
   kv('销售下家', d.customers.join('、'));
-  // 司机信息
-  var drvTxt=[d.drv.n&&('司机：'+d.drv.n), d.drv.p&&('📞 '+d.drv.p), d.drv.pl&&('🚗 '+d.drv.pl)].filter(Boolean).join('  ');
+  // 司机信息（合并为单文本）
+  var drvTxt=d.drv?'司机：'+d.drv:'';
   kv('司机信息', drvTxt);
   // 备注
   if(d.note){ kv('备注', d.note); }
