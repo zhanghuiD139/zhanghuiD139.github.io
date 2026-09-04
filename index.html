@@ -2722,12 +2722,7 @@ function ioFormV9(t){
     +'</div>'
     +'<table style="width:100%;border-collapse:collapse"><tbody id="ioForm_rows"></tbody></table>'
   +'</div>'
-  /* ===== 6. 司机信息 ===== */
-  +'<div style="margin-bottom:12px;border:1px dashed var(--border);border-radius:8px;padding:10px">'
-    +'<div style="font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px">'+ic('truck','var(--t2)',15)+'司机信息（选填）</div>'
-    +'<textarea id="ioForm_drv" rows="2" placeholder="一行一项（姓名 / 车牌号 / 电话 / 身份证号），可换行或空格分隔" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff;resize:vertical;line-height:1.6;font-family:inherit"></textarea>'
-  +'</div>'
-  /* ===== 7. 本表备注 ===== */
+  /* ===== 6. 本表备注（司机信息已移除：V9.1 sheet3 不涉及） ===== */
   +'<div style="margin-bottom:6px"><label class="fl">本表备注</label>'
     +'<textarea id="ioForm_note" rows="2" placeholder="选填（如提货客户/单据号/特殊说明）" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #E8D9BE;border-radius:8px;margin-top:4px;background:#fff;resize:vertical">'+esc(t.note||'')+'</textarea>'
   +'</div>'
@@ -3476,11 +3471,7 @@ function ioFormV9Collect(){
   var pid='LB-'+year+mid+'-'+norm;
   var buy=val('ioForm_buy'), sale=val('ioForm_sale');
   var note=val('ioForm_note');
-  /* 司机信息：拆 4 段（姓名/车牌/电话/身份证），用 / 串起来 */
-  var drvRaw=val('ioForm_drv');
-  var drvParts=drvRaw.split(/[\n\r\s\/，,;；]+/).map(function(s){return s.trim()}).filter(Boolean);
-  var drvText=drvParts.length?drvParts.join(' / '):'';
-  /* 销售端下家列表 */
+  /* 司机信息板块已移除（V9.1 sheet3 不涉及）；下家/采购销售合同号：表单保留，仅 sheet 写入时忽略 */
   var customers=Array.from(document.querySelectorAll('#ioForm_customers [data-f="customer"]')).map(function(el){return el.value.trim()}).filter(Boolean);
   /* 收集 rows */
   var rows=_IO_NEW_ROWS.slice().map(function(r){
@@ -3496,12 +3487,10 @@ function ioFormV9Collect(){
     if(!r.wh){ var g=_v9ioGuessWh(pid, r.product); if(g) r.wh=g; }
   });
   if(!useful.some(function(r){return r.wh})){toast('请至少一条产品行选择仓库');return null}
-  var custStr=customers.length?'下家：'+customers.join('、'):'';
-  var drvStr=drvText?'司机：'+drvText:'';
-  var extraNote=[custStr,drvStr].filter(Boolean).join(' · ');
+  /* extraNote 留空（V9.1 sheet3 不写入采购/销售合同号、销售端下家、司机信息） */
   var fullBaseNote=(note?note:'');
-  return {pid:pid,buy:buy,sale:sale,note:note,baseNote:fullBaseNote,extraNote:extraNote,
-    customers:customers,drv:drvText,rows:useful,ts:Date.now()};
+  return {pid:pid,buy:buy,sale:sale,note:note,baseNote:fullBaseNote,extraNote:'',
+    customers:customers,drv:'',rows:useful,ts:Date.now()};
 }
 /* 第二步：把 draft 渲染成确认核对表（覆盖表单区） */
 /* 第二步：把 draft（含 rows[]）渲染成确认核对列表 */
@@ -3517,10 +3506,7 @@ function ioFormV9ShowConfirm(d){
   var h='<div style="padding:10px 14px;background:#FFF7E6;border:1px solid #FFE6BF;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'
     +ic('check','var(--ac)',15)+'<b style="font-size:13.5px">请核对以下出入库（'+d.rows.length+' 行），确认无误后点「确认写入」</b></div>';
   h+=row('项目号',d.pid);
-  h+=row('采购合同号',d.buy);
-  h+=row('销售合同号',d.sale);
-  if(d.customers&&d.customers.length){ h+=row('销售端下家',d.customers.join('、 ')); }
-  if(d.drv){ h+=row('司机',d.drv); }
+  /* 采购合同号 / 销售合同号 / 销售端下家 / 司机信息：V9.1 sheet3 不写入，确认页不再展示 */
   if(d.baseNote){ h+=row('本表备注',d.baseNote); }
   /* 多产品行表格 */
   var th='<div style="margin-top:14px"><b style="font-size:13px">产品明细（'+d.rows.length+' 行）</b></div>'
@@ -3589,9 +3575,10 @@ function ioFormV9Save(){
     var li={id:idPrefix+Math.random().toString(36).slice(2,6),type:isIn?'in':'out',
       date:row.date||today(),wh:row.wh,item:row.product||'',qty:row.qty,price:'',cur:'',
       project:d.pid,note:fullNote};
+    /* contract/buy/sale：V9.1 sheet3 不写入（这些字段在 sheet3 主台账不涉及） */
     return {li:li, sheet:{dir:isIn?'入':'出',date:li.date,pid:d.pid,
-      contract:d.buy||d.sale||'',model:row.product||'',wh:row.wh,qty:row.qty,
-      amt:0,price:0,buy:d.buy,sale:d.sale,cur:'',vol:row.vol||'',note:li.note,ts:ts}};
+      contract:'',model:row.product||'',wh:row.wh,qty:row.qty,
+      amt:0,price:0,buy:'',sale:'',cur:'',vol:row.vol||'',note:li.note,ts:ts}};
   }
   var items=[], sheets=[];
   d.rows.forEach(function(r){
