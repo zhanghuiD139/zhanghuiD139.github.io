@@ -2873,7 +2873,6 @@ function ioNoticeForm(){
         '<span style="font-size:13px;font-weight:600">📤 通知出库</span>'+
       '</label>'+
     '</div>'+
-    '<div class="srcline" style="margin-top:4px">提示：同一张预通知只能是一种方向——同一项目号下若要另一方向，请再做一张。</div>'+
   '</div>'+
   /* ===== 7. 多产品行表格（每行分两行：产品+数量 / 仓库+日期） ===== */
   '<div style="margin-bottom:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#FFFCF5">'+
@@ -2885,12 +2884,10 @@ function ioNoticeForm(){
       '<tbody id="ionRows"></tbody>'+
     '</table>'+
   '</div>'+
-  '<div class="srcline" style="margin-top:-6px;margin-bottom:12px">提示：每个产品单独一行；同一项目号同一方向可一次列多个型号。下行填 <span style="color:var(--t2);font-weight:600">仓库</span> 和 <span style="color:var(--t2);font-weight:600">日期</span>。</div>'+
   /* ===== 8. 司机信息（合并：姓名/车牌/电话/身份证 同一文本框，按行或空格分隔） ===== */
   '<div style="margin-bottom:12px;border:1px dashed var(--border);border-radius:8px;padding:10px">'+
     '<div style="font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px">'+ic('truck','var(--t2)',15)+'司机信息</div>'+
     '<textarea id="ion_drv" rows="3" placeholder="一行一项，按顺序填写（姓名、车牌号、电话、身份证号）。可换行或空格分隔。" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff;resize:vertical;line-height:1.6;font-family:inherit"></textarea>'+
-    '<div class="srcline" style="margin-top:4px">示例：<code style="background:var(--bg-2);padding:1px 6px;border-radius:4px">张师傅 / 鄂A·12345 / 138xxxx0000 / 4201xxxxxxxxxxxx</code></div>'+
   '</div>'+
   /* ===== 9. 本表备注 ===== */
   '<div style="margin-bottom:6px"><label class="fl">本表备注</label>'+
@@ -3120,18 +3117,17 @@ function ionCollect(){
   }
   var ts=Date.now();
   var ioItems=[], sheets=[], idx=0;
-  var driverInfo=drvText?'司机：'+drvText:'';
-  var custStr=customers.length?'下家：'+customers.join('、'):'';
   rows.forEach(function(r){
-    var extraNote=[custStr, driverInfo].filter(Boolean).join(' · ');
-    var fullNote=(note?note:'')+(/[，。,]/.test(note)?' · ':'')+extraNote;
+    /* fullNote：仅本表备注（V9.1 sheet3 不写入合同号/下家/司机） */
+    var fullNote=note||'';
     var rdate=r.date||today();
     var rqty=+r.qty||0;
     if(!rqty) return;
     var li={id:'ion_'+ts+'_'+idx,type:dir,date:rdate,wh:r.wh,item:r.product||'',qty:rqty,price:'',cur:'',
       project:pid,note:fullNote};
-    var sh={dir:dir==='in'?'入':'出',date:rdate,pid:pid,contract:buy||sale||'',model:r.product||'',
-      wh:r.wh,qty:rqty,amt:0,price:0,buy:buy,sale:sale,cur:'',vol:r.vol||'',note:fullNote,ts:ts};
+    /* contract/buy/sale：V9.1 sheet3 不写入 */
+    var sh={dir:dir==='in'?'入':'出',date:rdate,pid:pid,contract:'',model:r.product||'',
+      wh:r.wh,qty:rqty,amt:0,price:0,buy:'',sale:'',cur:'',vol:r.vol||'',note:fullNote,ts:ts};
     ioItems.push(li); sheets.push(sh);
     idx++;
   });
@@ -3142,42 +3138,143 @@ function ionCollect(){
   return {pid:pid,buy:buy,sale:sale,note:note,drv:drvText,customers:customers,rows:rows,dir:dir,items:ioItems,sheets:sheets,ts:ts};
 }
 
-/* 预通知：保存至本地 io + pending 队列 */
-function ionSave(){
+/* 预通知：保存流程入口（第一步：校验 + 显示确认页）
+   仿 ioFormV9OnOk：第一次点「保存至新增出入库」→ 收集 + 渲染 ionConfirmPanel
+   真正写 sheet3 由 ionConfirmOk 完成（点确认写入按钮触发） */
+function ionOnOk(){
+  if(state._ionStep==='confirm'){
+    return ionConfirmOk();
+  }
   var d=ionCollect();
   if(!d) return;
-  setIo(getIo().concat(d.items));
-  setV9ioPending(getV9ioPending().concat(d.sheets));
-  // 复制 JSON 到剪贴板（方便发给小二写入金山）
-  try{
-    var clipTxt=JSON.stringify(d.sheets,null,2);
-    if(navigator.clipboard&&navigator.clipboard.writeText){
-      navigator.clipboard.writeText(clipTxt).then(function(){
-        toast('✅ 已写入 '+d.items.length+' 条 · JSON 已复制，去 WorkBuddy 发「同步上面」');
-      }).catch(function(){
-        toast('✅ 已写入 '+d.items.length+' 条 · JSON 复制失败，请在出入库列表点「导 JSON」');
-      });
-    } else { toast('✅ 已写入 '+d.items.length+' 条'); }
-  }catch(e){}
-  /* 【视觉反馈】把产品行换成绿色"已保存"高亮面板，3 秒后再恢复空表单。
-     让用户明确看到「已保存」，避免误以为数据丢了。 */
-  var tb=document.getElementById('ionRows');
-  if(tb){
-    var savedHtml='<tr><td colspan="6" style="padding:28px 12px;text-align:center;background:#EAF7EE;border-radius:10px">'+
-      '<div style="font-size:20px;font-weight:700;color:#0A8F4A;line-height:1.3">✅ 已保存 '+d.items.length+' 条出入库</div>'+
-      '<div style="font-size:12.5px;color:#0A8F4A;margin-top:6px">已复制 JSON 到剪贴板 · 可去 WorkBuddy 发「同步上面」写入金山文档</div>'+
-      '<div style="margin-top:12px;display:flex;gap:8px;justify-content:center">'+
-        '<button type="button" class="btn sm g" data-act="ionNewOne" style="font-weight:600">+ 再录一条</button>'+
-        '<button type="button" class="btn sm" data-act="ionCancel">关闭</button>'+
-      '</div></td></tr>';
-    tb.innerHTML=savedHtml;
-    /* 3 秒后若用户没主动点「再录一条/关闭」，自动恢复空表单继续录入 */
-    _ION_SAVED_RESTART_T=setTimeout(function(){
-      _IO_NOTICE_ROWS=[_ionRowBlank()];
-      _ionRenderRows();
-    }, 3500);
+  state._ionDraft=d;
+  ionShowConfirm(d);
+  state._ionStep='confirm';
+  /* 隐藏主按钮组，显示确认态按钮组 */
+  var btnSave=document.querySelector('[data-act="ionSave"]');
+  if(btnSave) btnSave.style.display='none';
+  return;
+}
+
+/* 预通知：渲染确认页（项目号 + 本表备注 + 产品明细 + 底部按钮） */
+function ionShowConfirm(d){
+  var body=document.getElementById('ionForm_body');
+  if(!body) return false;
+  /* 在 ionForm_body 后插入/更新 ionConfirmPanel（独立 div，不替换 body 内的输入） */
+  var panel=document.getElementById('ionConfirmPanel');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='ionConfirmPanel';
+    panel.style.marginTop='14px';
+    body.parentNode.insertBefore(panel, body.nextSibling);
   }
-  if(state.tab==='io') render();
+  function row(k,v,cls){
+    return '<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px dashed #FFE6BF;font-size:13px;line-height:1.55">'
+      +'<span style="color:var(--t3);min-width:80px;flex-shrink:0">'+esc(k)+'</span>'
+      +'<span style="font-weight:600;'+(cls?'color:'+cls:'')+'">'+esc(v||'—')+'</span></div>';
+  }
+  var dirLabel=d.dir==='in'?'入库通知':'出库通知';
+  var dirBg=d.dir==='in'?'#E8F7EE':'#FFEFD7';
+  var dirColor=d.dir==='in'?'#1F7A41':'#D44B17';
+  var h='<div style="padding:10px 14px;background:'+dirBg+';border:1px solid #FFE6BF;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'
+    +'<span style="font-size:14px;font-weight:700;color:'+dirColor+'">'+esc(dirLabel)+'</span>'
+    +'<b style="font-size:13.5px">请核对以下出入库（'+d.rows.length+' 行），确认无误后点「确认写入」</b></div>';
+  h+=row('项目号',d.pid,'var(--red)');
+  if(d.note){ h+=row('本表备注',d.note); }
+  /* 多产品行表格（按 dir 着色） */
+  var th='<div style="margin-top:14px"><b style="font-size:13px">产品明细（'+d.rows.length+' 行）</b></div>'
+    +'<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px;background:#FFFCF5;border:1px solid var(--border);border-radius:8px;overflow:hidden">'
+    +'<thead><tr style="background:var(--card-h)">'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:left">仓库</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:left">产品</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border)">日期</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border)">数量</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border)">体积</th>'
+    +'</tr></thead><tbody>';
+  var tb='';
+  d.rows.forEach(function(r){
+    var qtyColor=d.dir==='in'?'var(--green)':'var(--red)';
+    tb+='<tr>'
+      +'<td style="padding:6px;border-bottom:1px solid #F0E6D2">'+esc(r.wh||'—')+'</td>'
+      +'<td style="padding:6px;border-bottom:1px solid #F0E6D2">'+esc(r.product||'—')+'</td>'
+      +'<td style="padding:6px;border-bottom:1px solid #F0E6D2;text-align:center">'+esc(r.date||'—')+'</td>'
+      +'<td style="padding:6px;border-bottom:1px solid #F0E6D2;text-align:center;font-weight:600;color:'+qtyColor+'">'+esc(r.qty||0)+'</td>'
+      +'<td style="padding:6px;border-bottom:1px solid #F0E6D2;text-align:center">'+esc(r.vol||'—')+'</td>'
+    +'</tr>';
+  });
+  h+=th+tb+'</tbody></table>';
+  /* 底部按钮：返回修改 / 确认写入 */
+  h+='<div style="margin-top:14px;display:flex;gap:8px">'
+    +'<button type="button" class="btn" data-act="ionConfirmBack" style="flex:1;min-width:100px">返回修改</button>'
+    +'<button type="button" class="btn p" data-act="ionConfirmOk" style="flex:2;min-width:180px;font-weight:700">'+ic('check','#fff',14)+'确认写入 V9.1 sheet3</button>'
+    +'</div>';
+  panel.innerHTML=h;
+  /* 滚到确认页 */
+  panel.scrollIntoView({behavior:'smooth', block:'start'});
+  return true;
+}
+
+/* 预通知：确认写入 — 直写 V9.1 sheet3（与 ioFormV9Save 同结构） */
+function ionConfirmOk(){
+  var d=state._ionDraft;
+  if(!d){ toast('草稿已失效，请重新录入'); return false; }
+  var sheets=d.sheets;
+  var items=d.items;
+  var ts=d.ts||Date.now();
+  /* 1) 写入本地 v9io_pending（页面立即可见）+ io 历史 */
+  setIo(getIo().concat(items));
+  setV9ioPending(getV9ioPending().concat(sheets));
+  state._ionDraft=null; state._ionStep='form';
+  /* 2) 自动复制刚保存的 sheets 到剪贴板（兜底通道） */
+  var clipTxt=JSON.stringify(sheets,null,2);
+  var _wr=getV9ioWebhook();
+  var _direct=!!(_wr.mode&&_wr.url&&sheets.length);
+  if(_direct){
+    _copyText(clipTxt);
+    var dirLabel=d.dir==='in'?'入库':'出库';
+    toast('⏳ 已保存 '+items.length+' 条、'+dirLabel+'，正在直写 V9.1 多维表格…');
+  }else{
+    _copyText(clipTxt).then(function(ok){
+      if(ok){ toast('已保存 '+items.length+' 条出入库 + 已自动复制同步 JSON 到剪贴板。\n回 WorkBuddy 对话告诉我：「同步上面」\n我立即用 kdocs 写入 V9.1 多维表格 sheet 3。'); }
+      else   { toast('已保存 '+items.length+' 条出入库（自动复制失败，请手动复制顶部「待同步」卡片的 JSON）'); }
+    });
+  }
+  /* 3) 关掉 modal + 渲染 */
+  try{ closeModal(); }catch(e){}
+  render();
+  /* 4) 推送直写通道 */
+  if(_direct){
+    v9ioPushBatch(sheets,_wr).then(function(rs){
+      if(rs.ok){
+        var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;});
+        setV9ioPending(remaining);
+        if(_wr.mode==='kdocs'){
+          var conf=(rs.succR||[]).filter(function(r){return r.confirmed!==false;}).length;
+          toast((conf?'✅ 已直写 V9.1 ':'📤 已触发 V9.1 ')+rs.succ.length+' 条（出入库 + 测算仓储费）\n'+
+                (conf?'':'跨域读不到响应属正常，')+'请到 V9.1 核对一下');
+        }else{
+          toast('✅ 已直写 V9.1 多维表格 '+rs.succ.length+' 条（sheet 3）');
+        }
+      }else if(rs.succ.length){
+        var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;}).concat(rs.fail.map(function(x){return x.sheet;}));
+        setV9ioPending(remaining);
+        toast('⚠️ 直写部分成功（'+rs.succ.length+'/'+sheets.length+'），'+rs.fail[0].err+'。剩余条目已保留在待同步区。');
+      }else{
+        toast('⚠️ 直写失败：'+rs.fail[0].err+'。\n已自动复制 JSON，去对话说「同步上面」');
+      }
+      render();
+    });
+  }
+  return true;
+}
+
+/* 预通知：返回修改 — 隐藏 ionConfirmPanel，恢复主按钮 */
+function ionConfirmBack(){
+  var panel=document.getElementById('ionConfirmPanel');
+  if(panel) panel.innerHTML='';
+  var btnSave=document.querySelector('[data-act="ionSave"]');
+  if(btnSave) btnSave.style.display='';
+  state._ionDraft=null; state._ionStep='form';
 }
 
 /* 预通知：渲染到 canvas（生成可下载/可复制的图片） */
@@ -3997,7 +4094,7 @@ function ocrToForm(){
     outDate:p.dir==='出'?(p.date||''):'', outQty:p.dir==='出'?(p.qty||''):'', outVol:'',
     note:(pick?'已自动匹配合同 '+pick.b.pid+' · ':'OCR 自动提取 · ')+txt.slice(0,100)
   };
-  state.ioFormStep='form'; state.ioFormDraft=null;
+  state.ioFormStep='form'; state.ioFormDraft=null; state._ionStep='form'; state._ionDraft=null;
   openModal('出入库录入（出入库流水）',ioFormV9(t),'保存出入库',function(){return ioFormV9OnOk()},{icon:'plus'});
   var c=document.getElementById('mCancel');
   if(c) c.onclick=function(){
@@ -4502,7 +4599,8 @@ document.addEventListener('click',function(e){
     return;
   }
   if(act==='addIo'){
-    state.ioFormStep='form'; state.ioFormDraft=null;
+    
+
     /* 重置多行 rows（避免上次残留） */
     _IO_NEW_ROWS=[];
     _IO_NEW_DIR='in';
@@ -4523,7 +4621,8 @@ document.addEventListener('click',function(e){
     return;
   }
   if(act==='addIoNotice'){
-    state.ioFormStep='form'; state.ioFormDraft=null;
+    
+
     if(_ION_SAVED_RESTART_T){ clearTimeout(_ION_SAVED_RESTART_T); _ION_SAVED_RESTART_T=null; }
     _IO_NOTICE_ROWS=[_ionRowBlank()];
     _IO_NOTICE_DIR='in'; // 默认入库方向
@@ -4548,7 +4647,16 @@ document.addEventListener('click',function(e){
   if(act==='ioFrmDelCustomer'){ ioFrmDelCustomer(+id); return; }
   if(act==='ioFrmLoadProduct'){ ioFrmLoadProduct(); return; }
   if(act==='ioFrmConfirmProduct'){ ioFrmConfirmProduct(); return; }
-  if(act==='ionCancel'){ if(_ION_SAVED_RESTART_T){ clearTimeout(_ION_SAVED_RESTART_T); _ION_SAVED_RESTART_T=null; } closeModal(); return; }
+  /* —— 预通知：两步保存流程 —— */
+  if(act==='ionSave'){ ionOnOk(); return; }
+  if(act==='ionConfirmOk'){ ionConfirmOk(); return; }
+  if(act==='ionConfirmBack'){ ionConfirmBack(); return; }
+  if(act==='ionCancel'){
+    if(_ION_SAVED_RESTART_T){ clearTimeout(_ION_SAVED_RESTART_T); _ION_SAVED_RESTART_T=null; }
+    /* 预通知确认态下点「取消」= 返回修改 */
+    if(state._ionStep==='confirm'){ ionConfirmBack(); return; }
+    closeModal(); return;
+  }
   if(act==='ionAddProduct' || act==='ionAddRow'){ ionAddRow(); return; }
   if(act==='ionDelRow'){ ionDelRow(+id); return; }
   if(act==='ionLoadProduct'){ ionLoadProduct(); return; }
