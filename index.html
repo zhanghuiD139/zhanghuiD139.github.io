@@ -568,6 +568,7 @@ function ic(n,c,sz){
     edit:'M4 20h4L19 9l-4-4L4 16z',
     down:'M12 4v11M7 11l5 5 5-5M4 20h16',
     up:'M12 20V9M7 13l5-5 5 5M4 4h16',
+    refresh:'M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5',
     cal:'M4 8h16M7 3v4M17 3v4M5 8h14a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z',
     box:'M4 8l8-4 8 4v9l-8 4-8-4zM4 8l8 4 8-4M12 12v9',
     truck:'M2 7h11v9H2zM13 10h4l4 3.5V16h-8zM7 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM18 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z',
@@ -809,6 +810,14 @@ function loadV9(){
   if(cached && cached.io && !V9){ V9=cached; UPD_MARKED=false; markUpdateRecords(); }
   fetch('data.v9.json?t='+Date.now(),{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){
     V9ERR=''; V9=d; UPD_MARKED=false; markUpdateRecords(); SS('wb_v9_data_v9',d); if(state.tab==='v9')render();
+    /* 自动后台同步：服务端通道可用且本地数据超过 12 小时，静默拉取最新（不弹 toast，成功才提示） */
+    try{
+      var wh=getV9ioWebhook();
+      if(wh.mode==='server' && wh.url && d.generated_at){
+        var t=new Date(d.generated_at.replace(/-/g,'/')).getTime();
+        if(!isNaN(t) && (Date.now()-t)/3600000 > 12){ syncV9Now(); }
+      }
+    }catch(e){}
   }).catch(function(){ V9ERR='⚠ 线上数据获取失败，当前显示的是本地缓存，可能已过期'; if(state.tab==='v9')render(); });
 }
 function refreshV9(){
@@ -816,6 +825,41 @@ function refreshV9(){
   fetch('data.v9.json?t='+Date.now(),{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){
     V9ERR=''; V9=d; UPD_MARKED=false; markUpdateRecords(); SS('wb_v9_data_v9',d); toast('V9.1 数据已刷新'); if(state.tab==='v9')render();
   }).catch(function(){ toast('刷新失败：确认已部署且 data.v9.json 可访问'); });
+}
+/* 把一份数据应用到运行时（V9）+ 本地缓存 + 重渲染 */
+function applyV9(d, src){
+  V9ERR=''; V9=d; UPD_MARKED=false; markUpdateRecords(); SS('wb_v9_data_v9', d);
+  state.v9Src = src||'static';
+  if(state.tab==='v9'||state.tab==='io'||state.tab==='home') render();
+}
+/* 一键同步：优先走本机直连通道（v91-crud 服务端 /api/sync 实时拉 V9.1 全量），
+   服务端不可用时回退到静态 data.v9.json 重新拉取（github.io）。 */
+function syncV9Now(){
+  var wh=getV9ioWebhook();
+  if(wh.mode!=='server' || !wh.url){
+    toast('未配置直连通道，改为刷新缓存'); return refreshV9();
+  }
+  var base=wh.url.replace(/\/+$/,'');
+  toast('正在从 V9.1 同步最新数据…');
+  fetch(base+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','X-Webhook-Token':wh.token||''}})
+    .then(function(r){return r.json().then(function(j){return {ok:r.ok, body:j};});})
+    .then(function(res){
+      if(!res.ok || !res.body || !res.body.ok){ throw new Error('sync start failed'); }
+      pollSync(base, wh.token||'', 0);
+    })
+    .catch(function(){ toast('⚠ 同步服务不可用，已改为刷新缓存'); refreshV9(); });
+}
+function pollSync(base, token, n){
+  if(n>40){ toast('⚠ 同步超时，请稍后重试'); refreshV9(); return; }
+  fetch(base+'/api/sync-status',{method:'GET',headers:{'X-Webhook-Token':token},cache:'no-store'})
+    .then(function(r){return r.json();})
+    .then(function(st){
+      if(st.running){ setTimeout(function(){ pollSync(base, token, n+1); }, 2500); return; }
+      if(st.error){ toast('⚠ 同步失败：'+(st.error||'').slice(0,80)); refreshV9(); return; }
+      if(st.data){ applyV9(st.data, 'live'); toast('✅ 已同步最新数据（生成于 '+st.generated_at+'）'); }
+      else { toast('同步未返回数据，已改为刷新缓存'); refreshV9(); }
+    })
+    .catch(function(){ toast('⚠ 同步状态获取失败，已改为刷新缓存'); refreshV9(); });
 }
 function pageV9(){
   if(!V9){
@@ -827,10 +871,11 @@ function pageV9(){
   var sub=state.v9sub||'inv';
   var h='';
   h+='<div class="page-head"><h2>'+ic('box','var(--ac)',22)+'业务数据</h2>'+
-     '<span class="sub">数据生成于 '+esc(V9.generated_at||'')+'</span></div>'+
+     '<span class="sub">数据生成于 '+esc(V9.generated_at||'')+(state.v9Src==='live'?' · <b style="color:var(--green)">已实时同步</b>':'')+'</span></div>'+
      (V9ERR?'<div style="border:1px solid #E03A3F;background:#FFF1F1;color:#C22A2E;padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:13px">'+esc(V9ERR)+'</div>':'');
   h+='<div class="btn-row" style="margin-bottom:12px">'+
-     '<button class="btn p" data-act="refreshV9">'+ic('down','#fff',15)+'刷新数据</button></div>';
+     '<button class="btn p" data-act="syncV9Now">'+ic('refresh','#fff',15)+'同步最新数据</button>'+
+     '<button class="btn" data-act="refreshV9">'+ic('down','#fff',15)+'刷新缓存</button></div>';
   h+='<div class="tabs" style="margin-bottom:16px">'+[['inv','库存货值'],['io','出入库'],['fee','仓储费']].map(function(t){
     return '<button data-act="v9sub" data-v="'+t[0]+'" class="'+(sub===t[0]?'on':'')+'">'+t[1]+'</button>';
   }).join('')+'</div>';
@@ -1742,7 +1787,9 @@ function pageIo(){
   function fUSD(n){if(!n)return '$0';return '$'+(n>=10000?(Math.round(n/100)/100).toLocaleString()+'万':Math.round(n).toLocaleString())}
   var netCls=netCNY>0?'r':(netCNY<0?'b':'g');
   var h='';
-  h+='<div class="page-head"><h2>'+ic('truck','var(--ac)',22)+'出入库</h2><span class="sub">V9.1 自动同步（主体）· 手录兜底（WMS 不可直拉时人工登记）</span></div>';
+  h+='<div class="page-head"><h2>'+ic('truck','var(--ac)',22)+'出入库</h2><span class="sub">V9.1 自动同步（主体）· 手录兜底（WMS 不可直拉时人工登记）</span></div>'+
+     '<div class="btn-row" style="margin-bottom:12px"><button class="btn p" data-act="syncV9Now">'+ic('refresh','#fff',15)+'同步最新数据</button>'+
+     '<span class="srcline">'+(V9&&V9.generated_at?('数据生成于 '+esc(V9.generated_at)+(state.v9Src==='live'?' · 已实时同步':'')):'')+'</span></div>';
 
   /* ① 出入库查询：V9.1 自动同步（v9Io 整段：月度出入柱图 / 本周概览 / 出入库时间查询 / 明细） */
   if(V9 && V9.io){
@@ -3597,6 +3644,7 @@ document.addEventListener('click',function(e){
   }
   if(act==='qDetailReset'){state.qDetailResult=null;state.qDetailNoPid=state.qDetailNoBuy=state.qDetailNoSale=state.qDetailNoSup=state.qDetailNoCust='';render();return}
   if(act==='refreshV9'){refreshV9();return}
+  if(act==='syncV9Now'){syncV9Now();return}
 
   /* --- 每日一学 --- */
   if(act==='learnRefresh'){ learnLoad(); return }
