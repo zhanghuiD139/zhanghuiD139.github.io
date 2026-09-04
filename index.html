@@ -1876,10 +1876,9 @@ function pageIo(){
   h+='<div class="card" style="margin-top:16px"><div class="card-h"><h3>'+ic('plus','var(--ac)',16)+'新增出入库</h3></div>'+
      '<div class="btn-row" style="margin-bottom:12px;flex-wrap:wrap">'+
      '<button class="btn p" data-act="addIo">'+ic('plus','#fff',15)+'新增出入</button>'+
-     '<button class="btn" data-act="addIoPreview">'+ic('eye','currentColor',15)+'预出入</button>'+
      '<button class="btn" data-act="addIoNotice">'+ic('paper','currentColor',15)+'出入库预通知</button>'+
      '</div>'+
-     '<div class="srcline">「新增出入」直接录入流水；「预出入」先模拟并预览保存效果；「出入库预通知」生成可发微信的图片通知（可一次含多个产品）</div>'+
+     '<div class="srcline">「新增出入」直接录入流水；「出入库预通知」生成可发微信的图片通知（可一次含多个产品）</div>'+
      '</div>';
   return h;
 }
@@ -3968,17 +3967,6 @@ document.addEventListener('click',function(e){
     state.ioFormStep='form'; state.ioFormDraft=null;
     openModal('出入库录入（出入库流水）',ioFormV9(),'保存出入库',function(){return ioFormV9OnOk()},{icon:'plus'});
     /* 重绑取消按钮：确认态下点「返回修改」回到表单，而不是关闭整个弹窗 */
-    var c=document.getElementById('mCancel');
-    if(c) c.onclick=function(){
-      if(state.ioFormStep==='confirm'){ ioFormV9Back(); }
-      else closeModal();
-    };
-    return;
-  }
-  if(act==='addIoPreview'){
-    /* 「预出入」：先模拟录入后再决定是否保存（不开表单预览，仍用 addIo 主表单；保留入口占位） */
-    state.ioFormStep='form'; state.ioFormDraft=null;
-    openModal('预出入（出入库流水）',ioFormV9(),'保存出入库',function(){return ioFormV9OnOk()},{icon:'eye'});
     var c=document.getElementById('mCancel');
     if(c) c.onclick=function(){
       if(state.ioFormStep==='confirm'){ ioFormV9Back(); }
