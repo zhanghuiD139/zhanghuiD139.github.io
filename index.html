@@ -2939,90 +2939,194 @@ function ionRenderCanvas(){
   if(!cv) return null;
   // 移动端画布：宽度按内容定（WeChat 适合 ~720px 宽），用 2x DPR 出清晰图
   var dpr=window.devicePixelRatio||1;
-  var W=720, pad=20, lineH=22, titleH=42;
+  var W=720, pad=24, titleH=72;
   var dirLabel=d.dir==='in'?'入库通知':'出库通知';
-  var dirColor=d.dir==='in'?'#0a8b3e':'#c0392b';
+  // 方向主色
+  var dirColor=d.dir==='in'?'#2EA85A':'#FF6B35';
+  var dirColorDeep=d.dir==='in'?'#1F7A41':'#D44B17';
+  var dirBgLight=d.dir==='in'?'#E8F7EE':'#FFEFD7';
+  var dirBgRow1='#FFFFFF';
+  var dirBgRow2='#FAF6EE';
   // 估算高度
-  var rowH=46;
-  var H=titleH + 30 + 30 + 30 + 30 + 30 + 20 + 20 + d.rows.length*rowH + 30 + 30 + 30 + 30 + 40 + 30;
-  H=Math.max(420, H);
+  var rowH=42;
+  var infoRows=4 + (d.drv.n||d.drv.p||d.drv.pl?1:0) + (d.note?1:0);
+  var H=titleH + 22 + infoRows*30 + 16 + 40 + d.rows.length*rowH + 50 + 30;
+  H=Math.max(460, H);
   cv.width=W*dpr; cv.height=H*dpr;
   cv.style.width=W+'px'; cv.style.height=H+'px';
   var ctx=cv.getContext('2d');
   ctx.scale(dpr,dpr);
-  // 背景
-  ctx.fillStyle='#FFFCF5'; ctx.fillRect(0,0,W,H);
-  // 标题
-  ctx.fillStyle='#ED7A1A'; ctx.font='700 18px "PingFang SC","Microsoft YaHei",sans-serif';
-  ctx.fillText('📦 出入库预通知 · '+dirLabel, pad, 28);
-  // 时间戳
-  ctx.fillStyle='#888'; ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';
-  ctx.textAlign='right';
-  ctx.fillText('生成于 '+nowTime(), W-pad, 28);
+  // 整体背景（淡米色）
+  ctx.fillStyle='#FBF6EB'; ctx.fillRect(0,0,W,H);
+  // ===== 顶部色带（标题区） =====
+  // 圆角矩形色带
+  var bandX=pad, bandY=18, bandW=W-pad*2, bandH=56, r=10;
+  ctx.fillStyle=dirColor;
+  roundRect(ctx, bandX, bandY, bandW, bandH, r);
+  ctx.fill();
+  // 左侧小白圆点（图标）
+  ctx.fillStyle='rgba(255,255,255,0.25)';
+  ctx.beginPath(); ctx.arc(bandX+30, bandY+bandH/2, 16, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle='#FFFFFF';
+  ctx.font='700 18px "PingFang SC","Microsoft YaHei",sans-serif';
   ctx.textAlign='left';
-  // 分隔
-  ctx.strokeStyle='#F0E5D0'; ctx.beginPath(); ctx.moveTo(pad, titleH-6); ctx.lineTo(W-pad, titleH-6); ctx.stroke();
-  var y=titleH+8;
-  function kv(k,v,color){
-    ctx.fillStyle='#888'; ctx.font='12px sans-serif'; ctx.fillText(k, pad, y);
-    ctx.fillStyle=color||'#222'; ctx.font='600 13px sans-serif';
-    var tx=pad+72;
-    var txt=String(v==null?'':v);
-    if(ctx.measureText(txt).width>W-pad-tx-10){
-      while(ctx.measureText(txt+'…').width>W-pad-tx-10 && txt.length>0) txt=txt.slice(0,-1);
-        txt+='…';
+  ctx.fillText('📦', bandX+22, bandY+bandH/2+5);
+  // 标题文字
+  ctx.fillStyle='#FFFFFF';
+  ctx.font='700 19px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText('出入库预通知 · '+dirLabel, bandX+50, bandY+24);
+  ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.85)';
+  ctx.fillText('武汉联博光电 · 出入库预通知', bandX+50, bandY+44);
+  // 右上时间戳
+  ctx.fillStyle='#FFFFFF';
+  ctx.font='600 12px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign='right';
+  ctx.fillText('生成于 '+nowTime(), bandX+bandW-16, bandY+24);
+  ctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillStyle='rgba(255,255,255,0.75)';
+  ctx.fillText(today(), bandX+bandW-16, bandY+44);
+  ctx.textAlign='left';
+
+  // ===== 信息卡片区 =====
+  var cardX=pad, cardY=bandY+bandH+18, cardW=W-pad*2;
+  var y=cardY;
+  function kv(k,v,color,big){
+    // 左侧小标签
+    ctx.fillStyle='#9A8B70'; ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillText(k, cardX+10, y+6);
+    // 分隔小竖线
+    ctx.fillStyle='#E8D9BE';
+    ctx.fillRect(cardX+80, y-8, 1, 18);
+    // 值
+    ctx.fillStyle=color||'#222'; ctx.font=(big?'700 ':'600 ')+(big?'15':'14')+'px "PingFang SC","Microsoft YaHei",sans-serif';
+    var tx=cardX+92;
+    var txt=String(v==null||v===''?'—':v);
+    var maxW=cardW-92-10;
+    if(ctx.measureText(txt).width>maxW){
+      while(ctx.measureText(txt+'…').width>maxW && txt.length>0) txt=txt.slice(0,-1);
+      txt+='…';
     }
-    ctx.fillText(txt, tx, y);
-    y+=lineH;
+    ctx.fillText(txt, tx, y+6);
+    // 行底细线
+    ctx.strokeStyle='#F0E5D0'; ctx.lineWidth=0.5;
+    ctx.beginPath(); ctx.moveTo(cardX+8, y+14); ctx.lineTo(cardX+cardW-8, y+14); ctx.stroke();
+    y+=30;
   }
-  kv('项目号', d.pid||'—', '#ED7A1A');
-  kv('采购合同号', d.buy||'—');
-  kv('销售合同号', d.sale||'—');
-  kv('销售下家', d.customers.join('、')||'—');
-  // 司机
-  var drvTxt=[d.drv.n&&('司机：'+d.drv.n), d.drv.p&&('电话：'+d.drv.p), d.drv.pl&&('车牌：'+d.drv.pl)].filter(Boolean).join(' / ');
-  kv('司机信息', drvTxt||'—');
+  kv('项目号', d.pid, dirColorDeep, true);
+  kv('采购合同号', d.buy);
+  kv('销售合同号', d.sale);
+  kv('销售下家', d.customers.join('、'));
+  // 司机信息
+  var drvTxt=[d.drv.n&&('司机：'+d.drv.n), d.drv.p&&('📞 '+d.drv.p), d.drv.pl&&('🚗 '+d.drv.pl)].filter(Boolean).join('  ');
+  kv('司机信息', drvTxt);
   // 备注
   if(d.note){ kv('备注', d.note); }
-  // 表格标题
-  y+=4;
-  ctx.fillStyle='#222'; ctx.font='600 13px sans-serif'; ctx.fillText(d.dir==='in'?'入库明细':'出库明细', pad, y); y+=4;
-  ctx.strokeStyle='#E8D9BE'; ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W-pad, y); ctx.stroke();
-  y+=12;
-  // 表头
-  ctx.fillStyle='#FFF8E8'; ctx.fillRect(pad, y-12, W-pad*2, 22);
-  ctx.fillStyle='#666'; ctx.font='600 11.5px sans-serif';
+
+  // ===== 明细表 =====
+  // 表区大标题
+  ctx.fillStyle=dirColorDeep;
+  ctx.font='700 14px "PingFang SC","Microsoft YaHei",sans-serif';
+  var tblTitle=d.dir==='in'?'入库明细':'出库明细';
+  ctx.fillText('▼ '+tblTitle, cardX, y+12);
+  // 标题右侧小标签（总数量汇总）
+  var totalQty=0; d.rows.forEach(function(r){var q=+r.qty||0; if(q>0) totalQty+=q;});
+  if(totalQty>0){
+    ctx.fillStyle='#999'; ctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.textAlign='right';
+    ctx.fillText('共 '+totalQty+' '+ (d.dir==='in'?'入库':'出库'), cardX+cardW, y+12);
+    ctx.textAlign='left';
+  }
+  y+=22;
+  // 表头底色
+  var thY=y, thH=28;
+  ctx.fillStyle=dirBgLight;
+  roundRect(ctx, cardX, thY, cardW, thH, 6);
+  ctx.fill();
+  ctx.fillStyle=dirColorDeep;
+  ctx.font='700 12px "PingFang SC","Microsoft YaHei",sans-serif';
   var cols=[
-    {k:'仓库',x:pad+4,w:80},
-    {k:'产品',x:pad+88,w:240},
-    {k:'规格/体积',x:pad+332,w:90},
-    {k:'日期',x:pad+426,w:110},
-    {k:'数量',x:pad+540,w:80}
+    {k:'仓库',x:cardX+12,w:84},
+    {k:'产品',x:cardX+100,w:228},
+    {k:'规格/体积',x:cardX+332,w:90},
+    {k:'日期',x:cardX+426,w:108},
+    {k:'数量',x:cardX+538,w:80}
   ];
-  cols.forEach(function(c){ ctx.fillText(c.k, c.x, y+4); });
-  y+=18;
-  // 行
+  cols.forEach(function(c){ ctx.fillText(c.k, c.x, thY+18); });
+  y=thY+thH+4;
+  // 数据行
+  var rowIdx=0;
   d.rows.forEach(function(r){
     var hasQty=!!(+r.qty>0);
     if(!hasQty) return;
+    // 行底色（斑马纹）
+    var bg=rowIdx%2===0?dirBgRow1:dirBgRow2;
+    ctx.fillStyle=bg;
+    ctx.fillRect(cardX, y, cardW, rowH-2);
     // 截断产品名
     var prodTxt=String(r.product||'—');
-    if(ctx.measureText(prodTxt).width>240){ while(ctx.measureText(prodTxt+'…').width>240 && prodTxt.length>0) prodTxt=prodTxt.slice(0,-1); prodTxt+='…'; }
-    ctx.fillStyle='#222'; ctx.font='12px sans-serif';
-    ctx.fillText((r.wh||'—'), pad+4, y);
-    ctx.fillText(prodTxt, pad+88, y);
-    ctx.fillStyle='#666'; ctx.fillText(r.vol||'—', pad+332, y);
-    ctx.fillStyle='#666'; ctx.fillText(r.date||'—', pad+426, y);
-    ctx.fillStyle=dirColor; ctx.font='600 13px sans-serif';
-    ctx.fillText(String(r.qty||'—'), pad+540, y);
-    ctx.strokeStyle='#F2E8D0'; ctx.beginPath(); ctx.moveTo(pad, y+6); ctx.lineTo(W-pad, y+6); ctx.stroke();
+    if(ctx.measureText(prodTxt).width>228){
+      while(ctx.measureText(prodTxt+'…').width>228 && prodTxt.length>0) prodTxt=prodTxt.slice(0,-1);
+      prodTxt+='…';
+    }
+    // 仓库
+    ctx.fillStyle='#222'; ctx.font='600 13px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillText(r.wh||'—', cols[0].x, y+25);
+    // 产品
+    ctx.fillStyle='#222'; ctx.font='13px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillText(prodTxt, cols[1].x, y+25);
+    // 规格/体积
+    ctx.fillStyle='#777'; ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillText(r.vol||'—', cols[2].x, y+25);
+    // 日期
+    ctx.fillStyle='#555'; ctx.font='12px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillText(r.date||'—', cols[3].x, y+25);
+    // 数量（大字号醒目）
+    ctx.fillStyle=dirColor; ctx.font='800 17px "PingFang SC","Microsoft YaHei",sans-serif';
+    ctx.fillText(String(r.qty||'—'), cols[4].x, y+27);
+    // 行右侧小箭头/标记
+    ctx.fillStyle=dirColor; ctx.font='10px sans-serif';
+    ctx.textAlign='right';
+    ctx.fillText('●', cardX+cardW-8, y+25);
+    ctx.textAlign='left';
     y+=rowH;
+    rowIdx++;
   });
-  // 底部
-  ctx.fillStyle='#888'; ctx.font='11px sans-serif';
-  ctx.fillText('武汉联博光电 · 出入库预通知（生成后请人工核对再操作）', pad, y+18);
+  // 表格外框
+  ctx.strokeStyle='#E8D9BE'; ctx.lineWidth=0.5;
+  roundRect(ctx, cardX, thY, cardW, y-thY, 8);
+  ctx.stroke();
+  y+=8;
+
+  // ===== 底部 =====
+  // 装饰线
+  ctx.strokeStyle='#E8D9BE'; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(cardX, y+12); ctx.lineTo(cardX+cardW, y+12); ctx.stroke();
+  // 底部信息
+  y+=30;
+  ctx.fillStyle='#888'; ctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText('⚠ 出入库预通知 · 生成后请人工核对再操作', cardX, y);
+  ctx.textAlign='right';
+  ctx.fillStyle=dirColor; ctx.font='600 11px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillText('武汉联博光电科技有限公司', cardX+cardW, y);
+  ctx.textAlign='left';
   // 输出 dataURL
   return cv.toDataURL('image/png');
+}
+
+/* canvas 工具：圆角矩形路径 */
+function roundRect(ctx,x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y);
+  ctx.lineTo(x+w-r,y);
+  ctx.quadraticCurveTo(x+w,y,x+w,y+r);
+  ctx.lineTo(x+w,y+h-r);
+  ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+  ctx.lineTo(x+r,y+h);
+  ctx.quadraticCurveTo(x,y+h,x,y+h-r);
+  ctx.lineTo(x,y+r);
+  ctx.quadraticCurveTo(x,y,x+r,y);
+  ctx.closePath();
 }
 
 /* 预通知：保存 PNG */
