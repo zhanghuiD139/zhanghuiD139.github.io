@@ -2577,13 +2577,18 @@ function ioNoticeForm(){
     '</div>'+
     '<div id="ion_pidPreview" class="srcline" style="margin-top:6px;color:var(--red)">预览：LB-2026-</div>'+
   '</div>'+
-  /* ===== 2. 采购合同号 ===== */
-  '<div style="margin-bottom:12px"><label class="fl">采购合同号</label>'+
-    '<input type="text" id="ion_buy" oninput="ionAutoFill()" placeholder="联动：填一个关键字段，带出全部（项目号/采购合同号/销售合同号/销售下家）" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-  '</div>'+
-  /* ===== 3. 销售合同号（窄） ===== */
-  '<div style="margin-bottom:12px"><label class="fl">销售合同号</label>'+
-    '<input type="text" id="ion_sale" oninput="ionAutoFill()" placeholder="联动（同上）" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
+  /* ===== 2. 采购合同号 + 销售合同号（水平同一行） ===== */
+  '<div style="margin-bottom:12px"><label class="fl">采购合同号 / 销售合同号</label>'+
+    '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:11px;color:var(--t2);margin-bottom:3px">采购合同号</div>'+
+        '<input type="text" id="ion_buy" oninput="ionAutoFill()" placeholder="填一个带出全部" style="height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;background:#fff;box-sizing:border-box">'+
+      '</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:11px;color:var(--t2);margin-bottom:3px">销售合同号</div>'+
+        '<input type="text" id="ion_sale" oninput="ionAutoFill()" placeholder="同上联动" style="height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;background:#fff;box-sizing:border-box">'+
+      '</div>'+
+    '</div>'+
   '</div>'+
   /* ===== 4. 销售端下家（紧跟在销售合同号后面） ===== */
   '<div style="margin-bottom:12px"><label class="fl" style="display:flex;align-items:center;gap:8px">'+
