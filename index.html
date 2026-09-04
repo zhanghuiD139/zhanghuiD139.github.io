@@ -2419,91 +2419,323 @@ function previewIoFormPid(){
     }
   }
 }
+/* ============= 新增出入库：多产品行模型 + 同步机制 =============
+   与出入库预通知同源设计（每行独立方向 = 入库 in / 出库 out） */
+var _IO_NEW_ROWS = [];     // 当前产品行：[{wh,product,dir,date,qty,vol,note}]
+var _IO_NEW_DIR  = 'in';   // 默认方向（行级独立，此处仅为整张提醒色）
+function _iofRowBlank(){ return {wh:'',product:'',dir:'in',date:'',qty:'',vol:'',note:''}; }
+/* 单 input/select → _IO_NEW_ROWS 实时同步（用户输入时实时调用，避免重建 DOM 覆盖用户刚填的数据） */
+function _iofSyncField(el){
+  el._ionTouched=true;
+  var tr=el.closest&&el.closest('tr');
+  if(!tr) return;
+  var i=+tr.getAttribute('data-i');
+  if(isNaN(i)) return;
+  if(!_IO_NEW_ROWS[i]) _IO_NEW_ROWS[i]=_iofRowBlank();
+  var f=el.getAttribute('data-f');
+  _IO_NEW_ROWS[i][f]=el.value;
+}
+/* 多产品行渲染（每行独立方向 radio：in/out；数量列按 dir 着色）。
+   渲染前先同步「用户碰过的」DOM input → _IO_NEW_ROWS，避免程序写入的值被覆盖回空。 */
+function _iofRenderRows(){
+  var tb=document.getElementById('ioForm_rows');
+  if(!tb) return;
+  if(!_IO_NEW_ROWS.length) _IO_NEW_ROWS=[_iofRowBlank()];
+  /* 第一步（非破坏性）：同步用户碰过的 DOM input */
+  Array.from(tb.querySelectorAll('tr')).forEach(function(tr){
+    var i=+tr.getAttribute('data-i');
+    if(isNaN(i) || !_IO_NEW_ROWS[i]) return;
+    tr.querySelectorAll('[data-f]').forEach(function(el){
+      if(!el._ionTouched) return;
+      _IO_NEW_ROWS[i][el.getAttribute('data-f')]=el.value;
+    });
+  });
+  /* 第二步：根据 _IO_NEW_ROWS 渲染 HTML */
+  var whOpts='<option value="">请选择仓库</option>'+v9ioWhList().map(function(w){return '<option value="'+esc(w)+'">'+esc(w)+'</option>'}).join('');
+  var html=_IO_NEW_ROWS.map(function(r,i){
+    var dir=r.dir||'in';
+    var dirColor=dir==='in'?'var(--green)':'var(--red)';
+    var dirLabel=dir==='in'?'入库':'出库';
+    return '<tr data-i="'+i+'" style="border-top:1px solid var(--border)">'
+      +'<td colspan="6" style="padding:10px 8px">'
+        /* 上行：方向单选(占2栏) | 产品(flex:1) | 数量(88px, 按 dir 着色) | 删除(36x36) */
+        +'<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:nowrap">'
+          +'<div style="display:flex;border:1px solid #E8D9BE;border-radius:8px;overflow:hidden;flex-shrink:0">'
+            +'<label data-f="dir" data-v="in" onclick="_iofSetDir(this,'+i+',\'in\')" style="padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;background:'+(dir==='in'?'var(--green)':'#fff')+';color:'+(dir==='in'?'#fff':'var(--t2)')+'">入库</label>'
+            +'<label data-f="dir" data-v="out" onclick="_iofSetDir(this,'+i+',\'out\')" style="padding:6px 10px;cursor:pointer;font-size:12px;font-weight:600;background:'+(dir==='out'?'var(--red)':'#fff')+';color:'+(dir==='out'?'#fff':'var(--t2)')+'">出库</label>'
+          +'</div>'
+          +'<input type="text" data-f="product" value="'+esc(r.product||'')+'" oninput="_iofSyncField(this)" placeholder="产品名称" style="flex:1;min-width:0;height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+          +'<input type="number" data-f="qty" value="'+esc(r.qty||'')+'" oninput="_iofSyncField(this)" placeholder="数量" style="width:88px;height:36px;font-size:14px;font-weight:700;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff;color:'+dirColor+'">'
+          +'<button type="button" class="btn sm" data-act="ioFrmDelRow" data-i="'+i+'" title="删除此行" style="flex-shrink:0;height:36px;width:36px;padding:0;border-color:var(--red-l);color:var(--red);display:flex;align-items:center;justify-content:center">'+ic('trash','currentColor',14)+'</button>'
+        +'</div>'
+        /* 下行：仓库(flex:1) | 日期(flex:1) | 体积(120px,可空) | 隐藏 note */
+        +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap">'
+          +'<select data-f="wh" onchange="_iofSyncField(this)" style="flex:1;min-width:0;height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+whOpts+'</select>'
+          +'<input type="date" data-f="date" value="'+esc(r.date||'')+'" oninput="_iofSyncField(this)" style="flex:1;min-width:0;height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+          +'<input type="text" data-f="vol" value="'+esc(r.vol||'')+'" oninput="_iofSyncField(this)" placeholder="体积" style="width:120px;height:36px;font-size:12.5px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+          +'<input type="hidden" data-f="note" value="'+esc(r.note||'')+'">'
+        +'</div>'
+      +'</td>'
+    +'</tr>';
+  }).join('');
+  tb.innerHTML=html;
+  /* 还原已选中的仓库 + radio 激活态（select 默认选第一个 option） */
+  Array.from(tb.querySelectorAll('tr')).forEach(function(tr){
+    var i=+tr.getAttribute('data-i');
+    if(isNaN(i) || !_IO_NEW_ROWS[i]) return;
+    var r=_IO_NEW_ROWS[i];
+    var sel=tr.querySelector('[data-f="wh"]');
+    if(sel && r.wh){ sel.value=r.wh; }
+  });
+  /* 行数提示 */
+  var cnt=document.getElementById('ioForm_rowCount');
+  if(cnt){ cnt.textContent=_IO_NEW_ROWS.length+' 行'; }
+}
+/* 行级方向切换（点击 segmented 按钮） */
+function _iofSetDir(el,i,val){
+  if(!_IO_NEW_ROWS[i]) _IO_NEW_ROWS[i]=_iofRowBlank();
+  _IO_NEW_ROWS[i].dir=val;
+  _iofRenderRows();
+}
+/* 加行（默认 dir=in；可传入 product 预填） */
+function ioFrmAddRow(product){
+  product=product||'';
+  var r=_iofRowBlank();
+  r.product=product;
+  _IO_NEW_ROWS.push(r);
+  _iofRenderRows();
+}
+/* 删行 */
+function ioFrmDelRow(i){
+  _IO_NEW_ROWS.splice(i,1);
+  if(!_IO_NEW_ROWS.length) _IO_NEW_ROWS=[_iofRowBlank()];
+  _iofRenderRows();
+}
+/* 销售端下家（新增 / 删除） */
+function ioFrmAddCustomer(){
+  var box=document.getElementById('ioForm_customers');
+  if(!box) return;
+  var i=box.querySelectorAll('[data-idx]').length;
+  var div=document.createElement('div');
+  div.setAttribute('data-idx', i);
+  div.style.cssText='display:flex;gap:6px;align-items:center;margin-bottom:6px';
+  div.innerHTML='<input type="text" data-f="customer" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+    +'<button type="button" class="btn sm" data-act="ioFrmDelCustomer" data-idx="'+i+'" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>';
+  box.appendChild(div);
+}
+function ioFrmDelCustomer(i){
+  var box=document.getElementById('ioForm_customers');
+  if(!box) return;
+  var el=box.querySelector('[data-idx="'+i+'"]');
+  if(el) el.remove();
+}
+/* 产品下拉（按命中 records 填充） */
+function ioFrmLoadProductOptions(records){
+  var sel=document.getElementById('ioForm_product');
+  if(!sel) return;
+  var cur=sel.value;
+  var opts=['<option value="">（手动选择/新增产品行）</option>'];
+  records.forEach(function(r){
+    if(r.product){
+      opts.push('<option value="'+esc(r.product)+'" data-pid="'+esc(r.pid)+'" data-wh="'+esc(r.wh||'')+'">'+esc(r.product)+(r.ptype?'（'+esc(r.ptype)+'）':'')+(r.wh?' — '+esc(r.wh):'')+'</option>');
+    }
+  });
+  sel.innerHTML=opts.join('');
+  if(cur){ sel.value=cur; }
+}
+/* 项目号/合同号 250ms debounce 反查 sheet2_brief（项目号是权威来源 → 改项目号覆盖 buy/sale/customer） */
+var _IOF_AF_DEBOUNCE=null;
+function ioFrmAutoFill(){
+  clearTimeout(_IOF_AF_DEBOUNCE);
+  _IOF_AF_DEBOUNCE=setTimeout(function(){
+    var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
+    var normNo=_v9ioNormalizeNo(val('ioForm_noInp'));
+    var year=val('ioForm_yearSel'), mode=val('ioForm_modeSel');
+    var mid=mode==='外贸（J）'?'-J':'';
+    var pidRaw=normNo?('LB-'+year+mid+'-'+normNo):'';
+    var buy=val('ioForm_buy').trim(), sale=val('ioForm_sale').trim();
+    var hint=document.getElementById('ioForm_autoHint');
+    var hit=null, matchedById=false;
+    if(pidRaw){
+      hit=sb.find(function(r){return r.pid===pidRaw});
+      if(hit) matchedById=true;
+    }
+    if(!hit && buy){ hit=sb.find(function(r){return r.buy===buy}); }
+    if(!hit && sale){ hit=sb.find(function(r){return r.sale===sale}); }
+    if(hit){
+      /* 把归一化后的项目号写回 input（让用户看到） */
+      if(normNo){ var inp=document.getElementById('ioForm_noInp'); if(inp && inp.value!==normNo){ inp.value=normNo; previewIoFormPid(); } }
+      if(matchedById){
+        if(hit.buy && val('ioForm_buy')!==hit.buy){ val_set('ioForm_buy', hit.buy); }
+        if(hit.sale && val('ioForm_sale')!==hit.sale){ val_set('ioForm_sale', hit.sale); }
+        if(hit.customer){
+          var box=document.getElementById('ioForm_customers');
+          if(box){
+            box.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+              +'<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+              +'<button type="button" class="btn sm" data-act="ioFrmDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'
+              +'</div>';
+          }
+        }
+      } else {
+        if(!val('ioForm_buy') && hit.buy){ val_set('ioForm_buy', hit.buy); }
+        if(!val('ioForm_sale') && hit.sale){ val_set('ioForm_sale', hit.sale); }
+        if(hit.customer){
+          var box=document.getElementById('ioForm_customers');
+          if(box && !box.querySelector('[data-idx="0"] input[data-f="customer"]').value){
+            box.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+              +'<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+              +'<button type="button" class="btn sm" data-act="ioFrmDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'
+              +'</div>';
+          }
+        }
+      }
+      if(hint){ hint.style.display='inline-flex'; hint.style.color='var(--green)';
+        hint.innerHTML='✓ 已自动匹配合同：'+esc(hit.product||'')+(hit.customer?' · 下家 '+esc(hit.customer):''); }
+      ioFrmLoadProductOptions([hit]);
+    } else {
+      if(hint){ hint.style.display='inline-flex'; hint.style.color='var(--t3)';
+        hint.innerHTML='未匹配到合同（项目号/合同号可能尚无记录）'; }
+    }
+  }, 250);
+}
+/* 手动加载产品（用户主动点按钮） */
+function ioFrmLoadProduct(){
+  var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
+  var normNo=_v9ioNormalizeNo(val('ioForm_noInp'));
+  var mid=val('ioForm_modeSel')==='外贸（J）'?'-J':'';
+  var pid=normNo?('LB-'+val('ioForm_yearSel')+mid+'-'+normNo):'';
+  var buy=val('ioForm_buy').trim(), sale=val('ioForm_sale').trim();
+  var hits=[];
+  if(pid){ hits=sb.filter(function(r){return r.pid===pid}); }
+  if(!hits.length && buy){ hits=sb.filter(function(r){return r.buy && (r.buy.toUpperCase().indexOf(buy.toUpperCase())>-1)}); }
+  if(!hits.length && sale){ hits=sb.filter(function(r){return r.sale && (r.sale.toUpperCase().indexOf(sale.toUpperCase())>-1)}); }
+  if(!hits.length){ toast('未匹配到合同，可手动「+ 新增产品行」'); return; }
+  ioFrmLoadProductOptions(hits);
+  toast('已加载 '+hits.length+' 个合同产品');
+}
+/* ✓ 确定 → 把产品名 + 推断的仓库写入第一个空行 */
+function ioFrmConfirmProduct(){
+  var sel=document.getElementById('ioForm_product');
+  if(!sel){ toast('产品下拉不存在'); return; }
+  var product=sel.value;
+  if(!product){ toast('请先在下拉里选一个产品'); return; }
+  var opt=sel.options[sel.selectedIndex];
+  var whFromOpt=opt?opt.getAttribute('data-wh'):'';
+  var normNo=_v9ioNormalizeNo(val('ioForm_noInp'));
+  var mid=val('ioForm_modeSel')==='外贸（J）'?'-J':'';
+  var pid=normNo?('LB-'+val('ioForm_yearSel')+mid+'-'+normNo):'';
+  var guessed=whFromOpt || _v9ioGuessWh(pid, product);
+  /* 找首个空产品行 */
+  var targetIdx=-1;
+  for(var i=0;i<_IO_NEW_ROWS.length;i++){
+    if(!_IO_NEW_ROWS[i].product){ targetIdx=i; break; }
+  }
+  if(targetIdx<0){
+    var r=_iofRowBlank();
+    r.product=product;
+    r.wh=guessed||'';
+    _IO_NEW_ROWS.push(r);
+  } else {
+    _IO_NEW_ROWS[targetIdx].product=product;
+    if(guessed && !_IO_NEW_ROWS[targetIdx].wh){ _IO_NEW_ROWS[targetIdx].wh=guessed; }
+  }
+  /* 清掉 _ionTouched（确定按钮是覆盖式） */
+  var _tbPre=document.getElementById('ioForm_rows');
+  if(_tbPre){ Array.from(_tbPre.querySelectorAll('[data-f]')).forEach(function(el){ el._ionTouched=false; }); }
+  _iofRenderRows();
+  if(guessed){ toast('已导入产品「'+product.slice(0,14)+'…」+ 仓库「'+guessed+'」'); }
+  else { toast('已导入产品「'+product.slice(0,14)+'…」（未识别仓库，请手动选）'); }
+}
+
 function ioFormV9(t){
   t=t||{};
   var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
   var _years=Array.from(new Set(sb.map(function(x){return x.year}).filter(Boolean))).sort();
   if(!_years.length) _years=['2025','2026'];
-  var curYear=t.year||'2026', curMode=t.mode||'内贸', curNo=t.no||'';
   var _whList=v9ioWhList();
-  return '<div id="ioForm_body">'+
-  '<div style="display:flex;flex-wrap:wrap;gap:14px">'+
-    /* 项目号（拼装式）*/
-    '<div style="flex:1;min-width:260px"><label class="fl">项目号</label>'+
-      '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px">'+
-        '<span style="font-weight:700;font-size:13px">LB-</span>'+
-        '<select id="ioForm_yearSel" onchange="previewIoFormPid()" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
-          _years.map(function(y){return '<option value="'+y+'" '+(curYear===y?'selected':'')+'>'+y+'</option>'}).join('')+
-        '</select>'+
-        '<select id="ioForm_modeSel" onchange="previewIoFormPid()" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'+
-          '<option value="内贸"'+(curMode==='内贸'?'selected':'')+'>(内贸)</option>'+
-          '<option value="外贸（J）"'+(curMode==='外贸（J）'?'selected':'')+'>（外贸 J）</option>'+
-        '</select>'+
-        '<span style="font-weight:700">-</span>'+
-        '<input type="text" id="ioForm_noInp" oninput="previewIoFormPid()" value="'+esc(curNo)+'" placeholder="编号" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:130px;background:#fff">'+
-      '</div>'+
-      '<div id="ioForm_pidPreview" class="srcline" style="margin-top:4px;color:var(--red)">预览：LB-'+esc(curYear)+(curMode==='外贸（J）'?'-J':'')+'-'+esc(curNo)+'</div>'+
-    '</div>'+
-    /* 采购合同号 */
-    '<div style="flex:1;min-width:220px"><label class="fl">采购合同号</label>'+
-      '<input type="text" id="ioForm_buy" value="'+esc(t.buy||'')+'" placeholder="联动产品" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-    /* 销售合同号 */
-    '<div style="flex:1;min-width:220px"><label class="fl">销售合同号</label>'+
-      '<input type="text" id="ioForm_sale" value="'+esc(t.sale||'')+'" placeholder="联动产品" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-  '</div>'+
-  /* 产品 + 加载产品 */
-  '<div style="margin-top:14px"><label class="fl">产品（按上方项目号/合同号选择）</label>'+
-    '<div style="display:flex;gap:8px;align-items:center;margin-top:4px">'+
-      '<select id="ioForm_product" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;flex:1;background:#fff">'+
-        '<option value="">（请填写项目号/合同号后点「加载产品」）</option>'+
-      '</select>'+
-      '<button class="btn sm" type="button" data-act="v9ioLoadProduct">⟳ 加载产品</button>'+
-    '</div>'+
-  '</div>'+
-  /* 仓库（共用）*/
-  '<div style="margin-top:14px;max-width:340px"><label class="fl">仓库</label>'+
-      '<select id="ioForm_wh" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-        '<option value="">请选择仓库</option>'+
-        _whList.map(function(w){return '<option value="'+esc(w)+'">'+esc(w)+'</option>'}).join('')+
-      '</select>'+
-    '</div>'+
-  /* 入库日期 + 入库数量 */
-  '<div style="margin-top:14px;display:flex;gap:14px;flex-wrap:wrap">'+
-    '<div style="flex:1.5;min-width:220px"><label class="fl" style="color:var(--green)">入库日期</label>'+
-      '<input type="date" id="ioForm_inDate" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-    '<div style="flex:1;min-width:160px"><label class="fl" style="color:var(--green)">入库数量</label>'+
-      '<input type="number" id="ioForm_inQty" placeholder="件/台/箱" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-  '</div>'+
-  /* 出库日期 + 出库数量 */
-  '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">'+
-    '<div style="flex:1.5;min-width:220px"><label class="fl" style="color:var(--red)">出库日期</label>'+
-      '<input type="date" id="ioForm_outDate" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-    '<div style="flex:1;min-width:160px"><label class="fl" style="color:var(--red)">出库数量</label>'+
-      '<input type="number" id="ioForm_outQty" placeholder="件/台/箱" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-  '</div>'+
-  /* 入库体积 + 出库体积 */
-  '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">'+
-    '<div style="flex:1;min-width:200px"><label class="fl">入库体积</label>'+
-      '<input type="text" id="ioForm_inVol" placeholder="选填" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-    '<div style="flex:1;min-width:200px"><label class="fl">出库体积</label>'+
-      '<input type="text" id="ioForm_outVol" placeholder="选填" style="height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;width:100%;margin-top:4px;background:#fff">'+
-    '</div>'+
-  '</div>'+
-  /* 本表备注 */
-  '<div style="margin-top:10px"><label class="fl">本表备注</label>'+
-    '<textarea id="ioForm_note" rows="2" placeholder="选填（如提货客户/单据号）" style="width:100%;font-size:12.5px;padding:6px 8px;border:1px solid #E8D9BE;border-radius:8px;margin-top:4px;background:#fff;resize:vertical"></textarea>'+
-  '</div>'+
-  '</div>'+
-  /* 第二步：确认区（点「保存出入库」后显示，确认无误再写入） */
-  '<div id="ioForm_confirm" style="display:none"></div>';
+  /* 兼容 OCR / 旧调用：t 含 inQty/outQty/inDate/outDate/wh/product → 转成 1 行 rows */
+  if(!_IO_NEW_ROWS || !_IO_NEW_ROWS.length){
+    var initRow=_iofRowBlank();
+    if(t.product) initRow.product=t.product;
+    if(t.wh) initRow.wh=t.wh;
+    if(t.inQty){initRow.dir='in';initRow.qty=t.inQty;initRow.date=t.inDate||today();initRow.vol=t.inVol||'';}
+    else if(t.outQty){initRow.dir='out';initRow.qty=t.outQty;initRow.date=t.outDate||today();initRow.vol=t.outVol||'';}
+    _IO_NEW_ROWS=[initRow];
+  }
+  if(!_IO_NEW_DIR) _IO_NEW_DIR='in';
+  var curYear=t.year||'2026', curMode=t.mode||'内贸', curNo=t.no||'';
+  return '<div id="ioForm_body" style="font-size:13px">'
+  /* ===== 1. 项目号 ===== */
+  +'<div style="margin-bottom:12px"><label class="fl">项目号</label>'
+    +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:nowrap;margin-top:4px;width:100%">'
+      +'<span style="font-weight:700;font-size:14px;color:#ED7A1A;flex-shrink:0">LB-</span>'
+      +'<select id="ioForm_yearSel" onchange="previewIoFormPid();ioFrmAutoFill()" style="flex:1;min-width:90px;height:36px;font-size:13px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+        +_years.map(function(y){return '<option value="'+y+'"'+(curYear===y?' selected':'')+'>'+y+'</option>'}).join('')
+      +'</select>'
+      +'<select id="ioForm_modeSel" onchange="previewIoFormPid();ioFrmAutoFill()" style="flex:1;min-width:110px;height:36px;font-size:13px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+        +'<option value="内贸"'+(curMode==='内贸'?' selected':'')+'>（内贸）</option>'
+        +'<option value="外贸（J）"'+(curMode==='外贸（J）'?' selected':'')+'>（外贸 J）</option>'
+      +'</select>'
+      +'<span style="font-weight:700;font-size:14px;color:#ED7A1A;flex-shrink:0">-</span>'
+      +'<input type="text" id="ioForm_noInp" oninput="previewIoFormPid();ioFrmAutoFill()" value="'+esc(curNo)+'" placeholder="115" style="flex:1;min-width:100px;height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+    +'</div>'
+    +'<div id="ioForm_pidPreview" class="srcline" style="margin-top:6px;color:var(--red)">预览：LB-'+esc(curYear)+(curMode==='外贸（J）'?'-J':'')+'-'+esc(curNo)+'</div>'
+  +'</div>'
+  /* ===== 2. 采购合同号 + 销售合同号 ===== */
+  +'<div style="margin-bottom:12px"><label class="fl">采购合同号 / 销售合同号</label>'
+    +'<div style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">'
+      +'<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--t2);margin-bottom:3px">采购合同号</div>'
+        +'<input type="text" id="ioForm_buy" oninput="ioFrmAutoFill()" value="'+esc(t.buy||'')+'" placeholder="填一个带出全部" style="height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;background:#fff;box-sizing:border-box"></div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--t2);margin-bottom:3px">销售合同号</div>'
+        +'<input type="text" id="ioForm_sale" oninput="ioFrmAutoFill()" value="'+esc(t.sale||'')+'" placeholder="同上联动" style="height:36px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;width:100%;background:#fff;box-sizing:border-box"></div>'
+    +'</div>'
+  +'</div>'
+  /* ===== 3. 销售端下家 ===== */
+  +'<div style="margin-bottom:12px"><label class="fl" style="display:flex;align-items:center;gap:8px">销售端下家'
+    +'<button type="button" class="btn sm" data-act="ioFrmAddCustomer" style="margin-left:auto">+ 新增下家</button>'
+  +'</label>'
+  +'<div id="ioForm_customers" style="margin-top:6px">'
+    +'<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+      +'<input type="text" data-f="customer" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid #E8D9BE;border-radius:8px;background:#fff">'
+    +'</div>'
+  +'</div></div>'
+  /* ===== 4. 产品（联动加载 + ✓确定 + +新增产品行） ===== */
+  +'<div style="margin-bottom:12px"><label class="fl">产品（上方合同号联动加载）</label>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:4px">'
+      +'<select id="ioForm_product" style="height:34px;font-size:13px;padding:0 10px;border:1px solid #E8D9BE;border-radius:8px;flex:1;min-width:0;background:#fff">'
+        +'<option value="">（填写项目号/合同号后点「加载产品」）</option>'
+      +'</select>'
+    +'</div>'
+    +'<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">'
+      +'<button class="btn sm" type="button" data-act="ioFrmLoadProduct">⟳ 加载产品</button>'
+      +'<button class="btn sm g" type="button" data-act="ioFrmConfirmProduct" style="font-weight:600">✓ 确定</button>'
+      +'<button class="btn sm p" type="button" data-act="ioFrmAddRow">+ 新增产品行</button>'
+    +'</div>'
+    +'<div id="ioForm_autoHint" class="srcline" style="margin-top:4px;display:none"></div>'
+  +'</div>'
+  /* ===== 5. 多产品行卡片 ===== */
+  +'<div style="margin-bottom:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:#FFFCF5">'
+    +'<div style="padding:6px 10px;background:var(--card-h);font-size:11.5px;color:var(--t2);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">'
+      +'<span style="flex:1">⬇ 同一项目号下可一次录 <b style="color:var(--green)">入库</b> / <b style="color:var(--red)">出库</b> 各多条产品，每行独立方向</span>'
+      +'<span id="ioForm_rowCount" class="srcline" style="font-size:11px;color:var(--t3)"></span>'
+    +'</div>'
+    +'<table style="width:100%;border-collapse:collapse"><tbody id="ioForm_rows"></tbody></table>'
+  +'</div>'
+  /* ===== 6. 司机信息 ===== */
+  +'<div style="margin-bottom:12px;border:1px dashed var(--border);border-radius:8px;padding:10px">'
+    +'<div style="font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px">'+ic('truck','var(--t2)',15)+'司机信息（选填）</div>'
+    +'<textarea id="ioForm_drv" rows="2" placeholder="一行一项（姓名 / 车牌号 / 电话 / 身份证号），可换行或空格分隔" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #E8D9BE;border-radius:8px;background:#fff;resize:vertical;line-height:1.6;font-family:inherit"></textarea>'
+  +'</div>'
+  /* ===== 7. 本表备注 ===== */
+  +'<div style="margin-bottom:6px"><label class="fl">本表备注</label>'
+    +'<textarea id="ioForm_note" rows="2" placeholder="选填（如提货客户/单据号/特殊说明）" style="width:100%;font-size:13px;padding:8px 10px;border:1px solid #E8D9BE;border-radius:8px;margin-top:4px;background:#fff;resize:vertical">'+esc(t.note||'')+'</textarea>'
+  +'</div>'
+  +'</div>'
+  /* 第二步：确认区 */
+  +'<div id="ioForm_confirm" style="display:none"></div>';
 }
+
 
 /* ============= 出入库预通知 =============
    一个表单支持：
@@ -3235,58 +3467,86 @@ async function ionImgCopy(){
 /* 第一步：收集表单 + 校验，返回 draft（失败返回 null）
    增强：① 项目编号自动归一化（091/91/9 → 091）；② 仓库为空时按 pid 从历史出入库自动推荐 */
 function ioFormV9Collect(){
-  var year=val('ioForm_yearSel'), mode=val('ioForm_modeSel'), no=val('ioForm_noInp');
-  var buy=val('ioForm_buy'), sale=val('ioForm_sale');
-  var product=val('ioForm_product'), wh=val('ioForm_wh');
-  var inDate=val('ioForm_inDate'), inQty=+(val('ioForm_inQty')||0), inVol=val('ioForm_inVol');
-  var outDate=val('ioForm_outDate'), outQty=+(val('ioForm_outQty')||0), outVol=val('ioForm_outVol');
-  var note=val('ioForm_note');
-  var norm=_v9ioNormalizeNo(no);
+  _iofRenderRows();
+  var year=val('ioForm_yearSel'), mode=val('ioForm_modeSel');
+  var noRaw=val('ioForm_noInp'), norm=_v9ioNormalizeNo(noRaw);
   if(!norm){toast('请填写项目编号（数字，091/91/9 皆可）');return null}
-  /* 归一：091/91/9 → 091。同步写回 input 让用户看到结果 */
-  if(norm!==no){
-    var inp=document.getElementById('ioForm_noInp');
-    if(inp){ inp.value=norm; previewIoFormPid(); }
-  }
-  /* 仓库为空：按归一后的 pid + 产品 联合自动带出（一个项目号下不同产品仓不同） */
+  if(norm!==noRaw){ var inp=document.getElementById('ioForm_noInp'); if(inp){ inp.value=norm; previewIoFormPid(); } }
   var mid=mode==='外贸（J）'?'-J':'';
   var pid='LB-'+year+mid+'-'+norm;
-  if(!wh){ wh=_v9ioGuessWh(pid, product); }
-  if(!wh){toast('请选择仓库（或先填写项目号+产品以便从历史推荐）');return null}
-  if(!inQty && !outQty){toast('入库或出库数量至少填一项');return null}
-  return {year:year,mode:mode,no:norm,pid:pid,
-    buy:buy,sale:sale,product:product,wh:wh,
-    inDate:inDate,inQty:inQty,inVol:inVol,
-    outDate:outDate,outQty:outQty,outVol:outVol,note:note};
+  var buy=val('ioForm_buy'), sale=val('ioForm_sale');
+  var note=val('ioForm_note');
+  /* 司机信息：拆 4 段（姓名/车牌/电话/身份证），用 / 串起来 */
+  var drvRaw=val('ioForm_drv');
+  var drvParts=drvRaw.split(/[\n\r\s\/，,;；]+/).map(function(s){return s.trim()}).filter(Boolean);
+  var drvText=drvParts.length?drvParts.join(' / '):'';
+  /* 销售端下家列表 */
+  var customers=Array.from(document.querySelectorAll('#ioForm_customers [data-f="customer"]')).map(function(el){return el.value.trim()}).filter(Boolean);
+  /* 收集 rows */
+  var rows=_IO_NEW_ROWS.slice().map(function(r){
+    return {wh:(r.wh||'').trim(), product:(r.product||'').trim(), dir:r.dir||'in',
+      date:(r.date||'').trim(), qty:+r.qty||0, vol:(r.vol||'').trim(), note:(r.note||'').trim()};
+  });
+  /* 过滤空行（产品+仓库+数量都空） */
+  var useful=rows.filter(function(r){ return r.product || r.wh || r.qty; });
+  if(!useful.length){toast('请至少添加一条产品行（产品/仓库/数量）');return null}
+  if(!useful.some(function(r){return r.qty>0})){toast('请至少一条产品行填了数量');return null}
+  /* 自动补仓库：每行按 (pid, 产品) 猜（用户没填则猜，已填不动） */
+  useful.forEach(function(r){
+    if(!r.wh){ var g=_v9ioGuessWh(pid, r.product); if(g) r.wh=g; }
+  });
+  if(!useful.some(function(r){return r.wh})){toast('请至少一条产品行选择仓库');return null}
+  var custStr=customers.length?'下家：'+customers.join('、'):'';
+  var drvStr=drvText?'司机：'+drvText:'';
+  var extraNote=[custStr,drvStr].filter(Boolean).join(' · ');
+  var fullBaseNote=(note?note:'');
+  return {pid:pid,buy:buy,sale:sale,note:note,baseNote:fullBaseNote,extraNote:extraNote,
+    customers:customers,drv:drvText,rows:useful,ts:Date.now()};
 }
 /* 第二步：把 draft 渲染成确认核对表（覆盖表单区） */
+/* 第二步：把 draft（含 rows[]）渲染成确认核对列表 */
 function ioFormV9ShowConfirm(d){
   var body=document.getElementById('ioForm_body');
   var cf=document.getElementById('ioForm_confirm');
   if(!body||!cf) return false;
   function row(k,v,cls){
-    return '<div style="display:flex;gap:12px;padding:8px 0;border-bottom:1px dashed #FFE6BF;font-size:13.5px;line-height:1.6">'+
-      '<span style="color:var(--t3);min-width:96px;flex-shrink:0">'+esc(k)+'</span>'+
-      '<span style="font-weight:600;'+(cls?'color:'+cls:'')+'">'+esc(v||'—')+'</span></div>';
+    return '<div style="display:flex;gap:12px;padding:7px 0;border-bottom:1px dashed #FFE6BF;font-size:13px;line-height:1.55">'
+      +'<span style="color:var(--t3);min-width:80px;flex-shrink:0">'+esc(k)+'</span>'
+      +'<span style="font-weight:600;'+(cls?'color:'+cls:'')+'">'+esc(v||'—')+'</span></div>';
   }
-  var h='<div style="padding:12px 14px;background:#FFF7E6;border:1px solid #FFE6BF;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'+
-    ic('check','var(--ac)',15)+'<b style="font-size:13.5px">请核对以下出入库信息，确认无误后点「确认写入」</b></div>';
+  var h='<div style="padding:10px 14px;background:#FFF7E6;border:1px solid #FFE6BF;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;gap:8px">'
+    +ic('check','var(--ac)',15)+'<b style="font-size:13.5px">请核对以下出入库（'+d.rows.length+' 行），确认无误后点「确认写入」</b></div>';
   h+=row('项目号',d.pid);
   h+=row('采购合同号',d.buy);
   h+=row('销售合同号',d.sale);
-  h+=row('产品',d.product);
-  h+=row('仓库',d.wh);
-  if(d.inQty>0){
-    h+=row('入库日期',d.inDate||('（未填，按今天 '+today()+'）'));
-    h+=row('入库数量',d.inQty+' 件','#0A8F4A');
-    if(d.inVol) h+=row('入库体积',d.inVol);
-  }
-  if(d.outQty>0){
-    h+=row('出库日期',d.outDate||('（未填，按今天 '+today()+'）'));
-    h+=row('出库数量',d.outQty+' 件','#E03A3F');
-    if(d.outVol) h+=row('出库体积',d.outVol);
-  }
-  if(d.note) h+=row('本表备注',d.note);
+  if(d.customers&&d.customers.length){ h+=row('销售端下家',d.customers.join('、 ')); }
+  if(d.drv){ h+=row('司机',d.drv); }
+  if(d.baseNote){ h+=row('本表备注',d.baseNote); }
+  /* 多产品行表格 */
+  var th='<div style="margin-top:14px"><b style="font-size:13px">产品明细（'+d.rows.length+' 行）</b></div>'
+    +'<table style="width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px;background:#FFFCF5;border:1px solid var(--border);border-radius:8px;overflow:hidden">'
+    +'<thead><tr style="background:var(--card-h)">'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border)">方向</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:left">产品</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border);text-align:left">仓库</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border)">日期</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border)">数量</th>'
+      +'<th style="padding:8px 6px;border-bottom:1px solid var(--border)">体积</th>'
+    +'</tr></thead><tbody>';
+  var tb='';
+  d.rows.forEach(function(r){
+    var isIn=r.dir==='in';
+    var dirHtml=isIn?'<span style="background:var(--green);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">入库</span>':'<span style="background:var(--red);color:#fff;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">出库</span>';
+    tb+='<tr style="border-top:1px dashed #FFE6BF">'
+      +'<td style="padding:7px 6px;text-align:center">'+dirHtml+'</td>'
+      +'<td style="padding:7px 6px;font-weight:600">'+esc(r.product||'—')+'</td>'
+      +'<td style="padding:7px 6px">'+esc(r.wh||'—')+'</td>'
+      +'<td style="padding:7px 6px;text-align:center">'+esc(r.date||today())+'</td>'
+      +'<td style="padding:7px 6px;text-align:center;font-weight:700;color:'+(isIn?'var(--green)':'var(--red)')+'">'+esc(r.qty||0)+'</td>'
+      +'<td style="padding:7px 6px;text-align:center;color:var(--t3)">'+esc(r.vol||'—')+'</td>'
+    +'</tr>';
+  });
+  h+=th+tb+'</tbody></table>';
   cf.innerHTML=h;
   body.style.display='none';
   cf.style.display='block';
@@ -3317,20 +3577,28 @@ function ioFormV9OnOk(){
   return ioFormV9Save();
 }
 /* 真正写入（确认后） */
+/* 真正写入（确认后）— 把 rows[] 每行生成一条 ioItem + sheet */
 function ioFormV9Save(){
   var d=state.ioFormDraft;
   if(!d) return false;
-  var ts=Date.now(), idPrefix='v9_'+ts+'_';
-  function buildItem(dir,date,qty,vol){
-    var li={id:idPrefix+Math.random().toString(36).slice(2,6),type:dir==='入'?'in':'out',
-      date:date||today(),wh:d.wh,item:d.product||'',qty:qty,price:'',cur:'',
-      project:d.pid,note:(d.note||'')+(vol?(' / 体积 '+vol):'')};
-    return {li:li, sheet:{dir:dir,date:li.date,pid:d.pid,contract:d.buy||d.sale||'',model:d.product||'',
-      wh:d.wh,qty:qty,amt:0,price:0,buy:d.buy,sale:d.sale,cur:'',vol:vol||'',note:d.note||'',ts:ts}};
+  var ts=d.ts||Date.now(), idPrefix='v9_'+ts+'_';
+  function buildItem(row){
+    var isIn=row.dir==='in';
+    var rowNote=row.note||'';
+    var fullNote=(d.baseNote?d.baseNote:'')+(rowNote?' · '+rowNote:'')+(d.extraNote?' · '+d.extraNote:'');
+    var li={id:idPrefix+Math.random().toString(36).slice(2,6),type:isIn?'in':'out',
+      date:row.date||today(),wh:row.wh,item:row.product||'',qty:row.qty,price:'',cur:'',
+      project:d.pid,note:fullNote};
+    return {li:li, sheet:{dir:isIn?'入':'出',date:li.date,pid:d.pid,
+      contract:d.buy||d.sale||'',model:row.product||'',wh:row.wh,qty:row.qty,
+      amt:0,price:0,buy:d.buy,sale:d.sale,cur:'',vol:row.vol||'',note:li.note,ts:ts}};
   }
   var items=[], sheets=[];
-  if(d.inQty>0){var a=buildItem('入',d.inDate,d.inQty,d.inVol);items.push(a.li);sheets.push(a.sheet)}
-  if(d.outQty>0){var b=buildItem('出',d.outDate,d.outQty,d.outVol);items.push(b.li);sheets.push(b.sheet)}
+  d.rows.forEach(function(r){
+    if(!r.qty) return;
+    var a=buildItem(r);
+    items.push(a.li); sheets.push(a.sheet);
+  });
   setIo(getIo().concat(items));
   /* 1) 写入本地 v9io_pending 队列（页面立即可见） */
   var allPending=getV9ioPending().concat(sheets);
@@ -3341,7 +3609,6 @@ function ioFormV9Save(){
   var _wr=getV9ioWebhook();
   var _direct=!!(_wr.mode&&_wr.url&&sheets.length);
   if(_direct){
-    /* 直写模式：仍静默复制一份 JSON 作保险，但不再弹「回 WorkBuddy 派单」的引导 */
     _copyText(clipTxt);
     toast('⏳ 已保存 '+items.length+' 条，正在直写 V9.1 多维表格…');
   }else{
@@ -3353,12 +3620,10 @@ function ioFormV9Save(){
   /* 3) 关掉 modal */
   try{ closeModal(); }catch(e){}
   render();
-  /* 4) 推送直写通道（V9.1 出入库 + 测算仓储费）—— 成功则从待同步队列移除这批。
-     未配置通道时静默跳过，走「复制 JSON」兜底。 */
+  /* 4) 推送直写通道（V9.1 出入库 + 测算仓储费） */
   if(_direct){
     v9ioPushBatch(sheets,_wr).then(function(rs){
       if(rs.ok){
-        /* 推送成功 → 从 pending 队列里精确移除这批（按 ts 筛掉） */
         var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;});
         setV9ioPending(remaining);
         if(_wr.mode==='kdocs'){
@@ -4251,6 +4516,9 @@ document.addEventListener('click',function(e){
   }
   if(act==='addIo'){
     state.ioFormStep='form'; state.ioFormDraft=null;
+    /* 重置多行 rows（避免上次残留） */
+    _IO_NEW_ROWS=[];
+    _IO_NEW_DIR='in';
     openModal('出入库录入（出入库流水）',ioFormV9(),'保存出入库',function(){return ioFormV9OnOk()},{icon:'plus'});
     /* 重绑取消按钮：确认态下点「返回修改」回到表单，而不是关闭整个弹窗 */
     var c=document.getElementById('mCancel');
@@ -4258,6 +4526,13 @@ document.addEventListener('click',function(e){
       if(state.ioFormStep==='confirm'){ ioFormV9Back(); }
       else closeModal();
     };
+    /* 渲染初始 1 行 rows + 项目号预览 */
+    setTimeout(function(){
+      _iofRenderRows();
+      previewIoFormPid();
+      var psel=document.getElementById('ioForm_product');
+      if(psel) psel.value='';
+    }, 30);
     return;
   }
   if(act==='addIoNotice'){
@@ -4279,6 +4554,13 @@ document.addEventListener('click',function(e){
     return;
   }
   /* —— 出入库预通知 内的按钮 —— */
+  /* —— 新增出入库 内的按钮 —— */
+  if(act==='ioFrmAddRow'){ ioFrmAddRow(); return; }
+  if(act==='ioFrmDelRow'){ ioFrmDelRow(+id); return; }
+  if(act==='ioFrmAddCustomer'){ ioFrmAddCustomer(); return; }
+  if(act==='ioFrmDelCustomer'){ ioFrmDelCustomer(+id); return; }
+  if(act==='ioFrmLoadProduct'){ ioFrmLoadProduct(); return; }
+  if(act==='ioFrmConfirmProduct'){ ioFrmConfirmProduct(); return; }
   if(act==='ionCancel'){ if(_ION_SAVED_RESTART_T){ clearTimeout(_ION_SAVED_RESTART_T); _ION_SAVED_RESTART_T=null; } closeModal(); return; }
   if(act==='ionAddProduct' || act==='ionAddRow'){ ionAddRow(); return; }
   if(act==='ionDelRow'){ ionDelRow(+id); return; }
