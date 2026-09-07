@@ -4340,10 +4340,12 @@ async function v9DlInv(){
   /* V9.1 真实字段（2026-09-07 实拉 schema）：库存(Formula, 0=合同完结) / 单价（元）(Currency) */
   var qtyF=findField(/^库存\s*$/)||findField(/库存数量|现有数量|^数量$/);
   var priceF=findField(/^单价（元）/)||findField(/^单价/);
+  var priceUsdF=findField(/^单价（美元）/)||findField(/单价.*美元/);
   if(!whF){ toast('合同详情表未找到「仓库」字段（请检查 sheet 2 schema）'); return; }
   if(!qtyF){ toast('合同详情表未找到「库存」字段（请检查 sheet 2 schema）'); return; }
   var whK=whF.raw_name||whF.name, prodK=prodF?(prodF.raw_name||prodF.name):'', pidK=pidF?(pidF.raw_name||pidF.name):'', qtyK=qtyF?(qtyF.raw_name||qtyF.name):'';
   var priceK=priceF?(priceF.raw_name||priceF.name):'';
+  var priceUsdK=priceUsdF?(priceUsdF.raw_name||priceUsdF.name):'';
   /* 库存为 0 → 合同已完结，不在统计维度（辉哥规则） */
   function done(r){ return _v9InvNum((r.fields||{})[qtyK])<=0; }
   /* 收集「最后一个仓库」+ 计数（多值分隔：中文逗号/分号/顿号/斜线 → 取末段） */
@@ -4376,7 +4378,7 @@ async function v9DlInv(){
     var sel=checked.value;
     /* 立即关模态，后台生成 */
     setTimeout(function(){
-      try{ _v9InvGen(s2, whK, prodK, pidK, qtyK, sel, priceK); }
+      try{ _v9InvGen(s2, whK, prodK, pidK, qtyK, sel, priceK, priceUsdK); }
       catch(err){ toast('生成失败：'+(err&&err.message||'')); }
     }, 50);
     return true;
@@ -4384,7 +4386,7 @@ async function v9DlInv(){
 }
 /* 库存/单价数值解析：容错逗号/空格/字符串数字；无效视为 0（0=已完结不入盘点） */
 function _v9InvNum(x){ if(x===undefined||x===null||x==='') return 0; var n=parseFloat(String(x).replace(/[,，\s]/g,'')); return isNaN(n)?0:n; }
-function _v9InvGen(s2, whK, prodK, pidK, qtyK, selWh, priceK){
+function _v9InvGen(s2, whK, prodK, pidK, qtyK, selWh, priceK, priceUsdK){
   var rows=[];
   (s2.records||[]).forEach(function(rec){
     var flds=rec.fields||{};
@@ -4395,7 +4397,11 @@ function _v9InvGen(s2, whK, prodK, pidK, qtyK, selWh, priceK){
     var last=parts[parts.length-1]||'';
     if(last!==selWh) return;
     function get(k){var x=flds[k]; if(x===undefined||x===null||x==='') return ''; if(Array.isArray(x)) return x.join('/'); if(typeof x==='object') return JSON.stringify(x); return x;}
-    var pr=_v9InvNum(flds[priceK]); var prTxt=pr?(''+(Math.round(pr*100)/100)):'';
+    /* 价格规则：单价（元）有数据 → ¥人民币；单价（元）空白且单价（美元）有数据 → $美金 */
+    var cny=_v9InvNum(flds[priceK]), usd=_v9InvNum(flds[priceUsdK]);
+    var prTxt='';
+    if(cny>0)       prTxt='¥'+(Math.round(cny*100)/100);
+    else if(usd>0)  prTxt='$'+(Math.round(usd*100)/100);
     rows.push([rows.length+1, get(pidK), get(prodK), prTxt, '', get(qtyK), '', '']);
   });
   if(!rows.length){ toast('所选仓库没有匹配的合同记录'); return; }
@@ -4411,7 +4417,7 @@ function _v9InvGen(s2, whK, prodK, pidK, qtyK, selWh, priceK){
 /* 仓库盘点表 xlsx 生成器（自包含 styles.xml + 合并表头/表尾）
    行 1: 标题「武汉联博光电科技有限公司」（A1:H1 合并）
    行 2: 副标题「库存物品盘点表」（A2:H2 合并）
-   行 3: 日期+仓库（A3:H3 合并）
+   行 3: 日期（A3:D3 合并·居左）+ 仓库（E3:H3 合并）
    行 4: 8 列表头（序号/项目号/产品规格/价格/单位/库存数量/实际数量/备注）
    行 5..(4+N): 数据（序号右对齐数字，其余左对齐带边框）
    行 (5+N): 签字行「盘点人：… 复核人：… 仓库管理员：…」（A..:H.. 合并） */
@@ -4435,7 +4441,7 @@ function _xlsxInvBuild(rows, whName, todayCN){
         '<border><left/><right/><top/><bottom/><diagonal/></border>'+
         '<border><left style="thin"><color rgb="FF888888"/></left><right style="thin"><color rgb="FF888888"/></right><top style="thin"><color rgb="FF888888"/></top><bottom style="thin"><color rgb="FF888888"/></bottom></border>'+
       '</borders>'+
-      '<cellXfs count="7">'+
+      '<cellXfs count="8">'+
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
         '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'+
         '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'+
@@ -4443,6 +4449,7 @@ function _xlsxInvBuild(rows, whName, todayCN){
         '<xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'+
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>'+
         '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>'+
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>'+
       '</cellXfs>'+
     '</styleSheet>';
   var sh='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
@@ -4466,10 +4473,10 @@ function _xlsxInvBuild(rows, whName, todayCN){
   sh+='<row r="1" ht="36" customHeight="1">'+sc('A1','武汉联博光电科技有限公司',1,false)+'</row>';
   sh+='<row r="2" ht="30" customHeight="1">'+sc('A2','库存物品盘点表',2,false)+'</row>';
   sh+='<row r="3" ht="22" customHeight="1">'+
-    sc('A3','日期：'+todayCN,3,false)+
-    sc('B3','',3,false)+sc('C3','',3,false)+sc('D3','',3,false)+
-    sc('E3','仓库：'+whName,3,false)+
-    sc('F3','',3,false)+sc('G3','',3,false)+sc('H3','',3,false)+
+    sc('A3','日期：'+todayCN,7,false)+
+    sc('B3','',7,false)+sc('C3','',7,false)+sc('D3','',7,false)+
+    sc('E3','仓库：'+whName,7,false)+
+    sc('F3','',7,false)+sc('G3','',7,false)+sc('H3','',7,false)+
     '</row>';
   sh+='<row r="4" ht="28" customHeight="1">';
   for(var c=0;c<8;c++) sh+=sc(_xlsxCol(c)+4, HEADER[c], 4, false);
@@ -4487,10 +4494,11 @@ function _xlsxInvBuild(rows, whName, todayCN){
     sc('E'+signRow,'',6,false)+sc('F'+signRow,'',6,false)+sc('G'+signRow,'',6,false)+sc('H'+signRow,'',6,false)+
     '</row>';
   sh+='</sheetData>'+
-    '<mergeCells count="4">'+
+    '<mergeCells count="5">'+
       '<mergeCell ref="A1:H1"/>'+
       '<mergeCell ref="A2:H2"/>'+
-      '<mergeCell ref="A3:H3"/>'+
+      '<mergeCell ref="A3:D3"/>'+
+      '<mergeCell ref="E3:H3"/>'+
       '<mergeCell ref="A'+signRow+':H'+signRow+'"/>'+
     '</mergeCells>'+
     '<pageMargins left="0.5" right="0.5" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>'+
@@ -5173,7 +5181,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v39.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v40.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
