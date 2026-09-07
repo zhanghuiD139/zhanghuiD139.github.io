@@ -952,6 +952,12 @@ function pageExtHub(hub){
     '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">V9.1 多维表格 · 下载 Excel</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">导出为 .xlsx（合同详情 + 出入库，按 V9.1 多维表格原表结构）</div></div>'+
     '<div style="color:var(--ac);font-size:22px;font-weight:700">⬇</div>'+
   '</button>'+
+  /* 仓库盘点表（2026-09-07 新增）：选仓库后从合同详情筛出该仓库现有库存，下载 Excel 盘点表（公司抬头+盘点表标题+日期+仓库+8列明细+三签字行） */
+  '<button data-act="v9DlInv" class="card ext-hub-card" style="display:flex;align-items:center;gap:14px;padding:18px 22px;width:320px;max-width:90vw;border:1px dashed #1D93C4;border-radius:14px;background:#F0FAFF;cursor:pointer;font-family:inherit">'+
+    '<div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#7BCFE8,#1D93C4);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic('box','#fff',22)+'</div>'+
+    '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">仓库盘点表 · 下载 Excel</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">选仓库 → 筛合同详情现有库存 → 下载盘点表</div></div>'+
+    '<div style="color:#1D93C4;font-size:22px;font-weight:700">⬇</div>'+
+  '</button>'+
   '</div>';
 }
 function v9Inv(){
@@ -4282,6 +4288,224 @@ async function v9DlXlsx(){
     toast('Excel 生成失败：'+(e2&&e2.message||''));
   }
 }
+/* ===== 仓库盘点表（2026-09-07 新增）=====
+   v9DlInv → 弹模态列 sheet2 出现的所有「最后一个仓库」供选择
+   _v9InvGen → 选定仓库后筛合同详情现有库存，调 _xlsxInvBuild 生成 xlsx
+   _xlsxInvBuild → 自包含 styles.xml + mergeCells（5 跨 8 列合并），单 sheet「库存盘点表」 */
+async function v9DlInv(){
+  var wh=getV9ioWebhook();
+  if(!wh||!wh.url){ toast('请先在「数据 & 设置」配置 V9.1 直写通道'); return; }
+  toast('正在拉取合同详情用于仓库盘点…');
+  var s2;
+  try{
+    var r=await fetch(wh.url.replace(/\/+$/,'')+'/api/v91/raw?sid=2',{headers:{'X-Webhook-Token':wh.token||''},cache:'no-store'});
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    s2=await r.json();
+  }catch(e){ toast('拉取失败：'+(e&&e.message||'')+' · 请检查 V9.1 直写通道是否可达'); return; }
+  if(!s2||!s2.fields){ toast('合同详情表数据格式异常'); return; }
+  /* 字段模糊匹配（兼容带空格/特殊字符的真实字段名） */
+  function findField(re){ return s2.fields.find(function(f){return re.test(f.name||'')||re.test(f.raw_name||'');}); }
+  var whF=findField(/^仓库\s*$/);
+  var prodF=findField(/^产品(?!类型)/);
+  var pidF=findField(/项目号/);
+  var qtyF=findField(/库存数量|^数量$|现有数量/);
+  if(!whF){ toast('合同详情表未找到「仓库」字段（请检查 sheet 2 schema）'); return; }
+  var whK=whF.raw_name||whF.name, prodK=prodF?(prodF.raw_name||prodF.name):'', pidK=pidF?(pidF.raw_name||pidF.name):'', qtyK=qtyF?(qtyF.raw_name||qtyF.name):'';
+  /* 收集「最后一个仓库」+ 计数（多值分隔：中文逗号/分号/顿号/斜线 → 取末段） */
+  var whMap={};
+  (s2.records||[]).forEach(function(rec){
+    var v=(rec.fields||{})[whK];
+    if(v===undefined||v===null||v==='') return;
+    if(Array.isArray(v)) v=v.join(',');
+    var parts=String(v).replace(/[，；、\/]/g,',').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    var last=parts[parts.length-1]; if(!last) return;
+    whMap[last]=(whMap[last]||0)+1;
+  });
+  var whList=Object.keys(whMap).sort(function(a,b){return whMap[b]-whMap[a]});
+  if(!whList.length){ toast('合同详情表没有任何仓库数据'); return; }
+  var body=
+    '<div style="font-size:12.5px;color:var(--t3);margin-bottom:14px;line-height:1.7">从 V9.1 合同详情筛出该仓库的现有库存并下载 Excel 盘点表。<br>仓库列含多个值时，<b>以最后一个为统计维度</b>。</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px;max-height:50vh;overflow-y:auto;padding-right:4px">'+
+    whList.map(function(w,i){
+      return '<label style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid #C7E9F5;border-radius:10px;background:#F0FAFF;cursor:pointer">'+
+        '<input type="radio" name="v9InvWh" value="'+esc(w)+'" '+(i===0?'checked':'')+'>'+
+        '<span style="flex:1;font-weight:600">'+esc(w)+'</span>'+
+        '<span style="color:var(--t3);font-size:12.5px">'+whMap[w]+' 条</span>'+
+      '</label>';
+    }).join('')+
+    '</div>';
+  openModal('仓库盘点表 · 选择仓库', body, '生成 Excel', function(){
+    var checked=document.querySelector('input[name="v9InvWh"]:checked');
+    if(!checked){ toast('请选择一个仓库'); return false; }
+    var sel=checked.value;
+    /* 立即关模态，后台生成 */
+    setTimeout(function(){
+      try{ _v9InvGen(s2, whK, prodK, pidK, qtyK, sel); }
+      catch(err){ toast('生成失败：'+(err&&err.message||'')); }
+    }, 50);
+    return true;
+  }, {icon:'box'});
+}
+function _v9InvGen(s2, whK, prodK, pidK, qtyK, selWh){
+  var rows=[];
+  (s2.records||[]).forEach(function(rec){
+    var flds=rec.fields||{};
+    var v=flds[whK]; if(v===undefined||v===null||v==='') return;
+    if(Array.isArray(v)) v=v.join(',');
+    var parts=String(v).replace(/[，；、\/]/g,',').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    var last=parts[parts.length-1]||'';
+    if(last!==selWh) return;
+    function get(k){var x=flds[k]; if(x===undefined||x===null||x==='') return ''; if(Array.isArray(x)) return x.join('/'); if(typeof x==='object') return JSON.stringify(x); return x;}
+    rows.push([rows.length+1, get(pidK), get(prodK), '', '', get(qtyK), '', '']);
+  });
+  if(!rows.length){ toast('所选仓库没有匹配的合同记录'); return; }
+  var d=new Date();
+  var todayCN=d.getFullYear()+' 年 '+(d.getMonth()+1)+' 月 '+d.getDate()+' 日';
+  var blob=_xlsxInvBuild(rows, selWh, todayCN);
+  var name='库存盘点表_'+selWh+'_'+today()+'.xlsx';
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){URL.revokeObjectURL(a.href)},2500);
+  toast('已下载 '+name+'（'+rows.length+' 条记录，'+Math.round(blob.size/1024)+' KB）');
+}
+/* 仓库盘点表 xlsx 生成器（自包含 styles.xml + 合并表头/表尾）
+   行 1: 标题「武汉联博光电科技有限公司」（A1:H1 合并）
+   行 2: 副标题「库存物品盘点表」（A2:H2 合并）
+   行 3: 日期+仓库（A3:H3 合并）
+   行 4: 8 列表头（序号/项目号/产品规格/价格/单位/库存数量/实际数量/备注）
+   行 5..(4+N): 数据（序号右对齐数字，其余左对齐带边框）
+   行 (5+N): 签字行「盘点人：… 复核人：… 仓库管理员：…」（A..:H.. 合并） */
+function _xlsxInvBuild(rows, whName, todayCN){
+  var HEADER=['序号','项目号','产品规格','价格','单位','库存数量','实际数量','备注'];
+  var dataStart=5, dataEnd=4+rows.length, signRow=dataEnd+1;
+  /* styles.xml：7 个 cellXf（0默认 / 1标题 / 2副标题 / 3元信息 / 4表头 / 5数字 / 6普通） */
+  var STYLES='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+      '<fonts count="3">'+
+        '<font><sz val="11"/><name val="微软雅黑"/></font>'+
+        '<font><b/><sz val="18"/><name val="微软雅黑"/></font>'+
+        '<font><b/><sz val="14"/><name val="微软雅黑"/></font>'+
+      '</fonts>'+
+      '<fills count="3">'+
+        '<fill><patternFill patternType="none"/></fill>'+
+        '<fill><patternFill patternType="gray125"/></fill>'+
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFFFE0B2"/></patternFill></fill>'+
+      '</fills>'+
+      '<borders count="2">'+
+        '<border><left/><right/><top/><bottom/><diagonal/></border>'+
+        '<border><left style="thin"><color rgb="FF888888"/></left><right style="thin"><color rgb="FF888888"/></right><top style="thin"><color rgb="FF888888"/></top><bottom style="thin"><color rgb="FF888888"/></bottom></border>'+
+      '</borders>'+
+      '<cellXfs count="7">'+
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'+
+        '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'+
+        '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'+
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'+
+        '<xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'+
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="right" vertical="center"/></xf>'+
+        '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>'+
+      '</cellXfs>'+
+    '</styleSheet>';
+  var sh='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'+
+      '<cols>'+
+        '<col min="1" max="1" width="7"  customWidth="1"/>'+
+        '<col min="2" max="2" width="22" customWidth="1"/>'+
+        '<col min="3" max="3" width="42" customWidth="1"/>'+
+        '<col min="4" max="4" width="12" customWidth="1"/>'+
+        '<col min="5" max="5" width="8"  customWidth="1"/>'+
+        '<col min="6" max="6" width="14" customWidth="1"/>'+
+        '<col min="7" max="7" width="14" customWidth="1"/>'+
+        '<col min="8" max="8" width="24" customWidth="1"/>'+
+      '</cols>'+
+      '<sheetData>';
+  function sc(ref,val,style,isNum){
+    if(val===''||val===null||val===undefined) return '<c r="'+ref+'" s="'+style+'"/>';
+    if(isNum) return '<c r="'+ref+'" s="'+style+'"><v>'+val+'</v></c>';
+    return '<c r="'+ref+'" s="'+style+'" t="inlineStr"><is><t xml:space="preserve">'+_xlsxEsc(val)+'</t></is></c>';
+  }
+  sh+='<row r="1" ht="36" customHeight="1">'+sc('A1','武汉联博光电科技有限公司',1,false)+'</row>';
+  sh+='<row r="2" ht="30" customHeight="1">'+sc('A2','库存物品盘点表',2,false)+'</row>';
+  sh+='<row r="3" ht="22" customHeight="1">'+
+    sc('A3','日期：'+todayCN,3,false)+
+    sc('B3','',3,false)+sc('C3','',3,false)+sc('D3','',3,false)+
+    sc('E3','仓库：'+whName,3,false)+
+    sc('F3','',3,false)+sc('G3','',3,false)+sc('H3','',3,false)+
+    '</row>';
+  sh+='<row r="4" ht="28" customHeight="1">';
+  for(var c=0;c<8;c++) sh+=sc(_xlsxCol(c)+4, HEADER[c], 4, false);
+  sh+='</row>';
+  for(var i=0;i<rows.length;i++){
+    var rn=dataStart+i, r=rows[i];
+    sh+='<row r="'+rn+'">';
+    sh+=sc('A'+rn, r[0], 5, true);
+    for(var cc=1;cc<8;cc++) sh+=sc(_xlsxCol(cc)+rn, r[cc], 6, false);
+    sh+='</row>';
+  }
+  sh+='<row r="'+signRow+'" ht="50" customHeight="1">'+
+    sc('A'+signRow,'　　盘点人：　　　　　　　　　　复核人：　　　　　　　　　　仓库管理员：',6,false)+
+    sc('B'+signRow,'',6,false)+sc('C'+signRow,'',6,false)+sc('D'+signRow,'',6,false)+
+    sc('E'+signRow,'',6,false)+sc('F'+signRow,'',6,false)+sc('G'+signRow,'',6,false)+sc('H'+signRow,'',6,false)+
+    '</row>';
+  sh+='</sheetData>'+
+    '<mergeCells count="5">'+
+      '<mergeCell ref="A1:H1"/>'+
+      '<mergeCell ref="A2:H2"/>'+
+      '<mergeCell ref="A3:H3"/>'+
+      '<mergeCell ref="A4:H4"/>'+
+      '<mergeCell ref="A'+signRow+':H'+signRow+'"/>'+
+    '</mergeCells>'+
+    '<pageMargins left="0.5" right="0.5" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>'+
+    '<pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/>'+
+    '<printOptions horizontalCentered="1"/>'+
+    '</worksheet>';
+  var wbXml='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'+
+    '<sheets><sheet name="库存盘点表" sheetId="1" r:id="rId1"/></sheets>'+
+    '</workbook>';
+  var wbRels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'+
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'+
+    '</Relationships>';
+  var rootRels='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'+
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'+
+    '</Relationships>';
+  var ct='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'+
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'+
+    '<Default Extension="xml" ContentType="application/xml"/>'+
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'+
+    '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'+
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'+
+    '<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>'+
+    '<Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>'+
+    '</Types>';
+  var now=new Date().toISOString();
+  var core='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'+
+    '<dc:title>库存盘点表 - '+_xlsxEsc(whName)+'</dc:title>'+
+    '<dc:creator>小二</dc:creator>'+
+    '<cp:lastModifiedBy>小二</cp:lastModifiedBy>'+
+    '<dcterms:created xsi:type="dcterms:W3CDTF">'+now+'</dcterms:created>'+
+    '<dcterms:modified xsi:type="dcterms:W3CDTF">'+now+'</dcterms:modified>'+
+    '</cp:coreProperties>';
+  var app='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
+    '<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'+
+    '<Application>小马工作台</Application>'+
+    '</Properties>';
+  var files=[
+    {name:'[Content_Types].xml', data:_u8(ct)},
+    {name:'_rels/.rels', data:_u8(rootRels)},
+    {name:'xl/workbook.xml', data:_u8(wbXml)},
+    {name:'xl/_rels/workbook.xml.rels', data:_u8(wbRels)},
+    {name:'xl/worksheets/sheet1.xml', data:_u8(sh)},
+    {name:'xl/styles.xml', data:_u8(STYLES)},
+    {name:'docProps/core.xml', data:_u8(core)},
+    {name:'docProps/app.xml', data:_u8(app)}
+  ];
+  return new Blob([_zipStore(files)], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
 function doExportCsv(){
   var rows=[['事项','日期','优先级','来源','状态','备注']];
   getTodos().forEach(function(t){rows.push([t.title,t.date,t.pri,t.from,t.done?'已完成':'未完成',t.note||''])});
@@ -4907,7 +5131,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v35.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v36.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
