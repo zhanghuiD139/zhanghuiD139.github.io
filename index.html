@@ -1269,14 +1269,13 @@ function kwPlain(hits){ return esc(hits.join(' · ')); }
 /* ================= 导航 ================= */
 var TABS=[
   {k:'home',n:'今日',ni:'今日要处理',i:'home'},
+  {k:'todo',n:'待办',ni:'待办 & 排期',i:'check'},
+  {k:'io',n:'出入库',ni:'出入库',i:'truck'},
+  {k:'idea',n:'一学',ni:'每日一学',i:'cap'},
+  {k:'v9',n:'物管',ni:'业务数据',i:'box'},
   {k:'h3yun',n:'氚云&多维表格',ni:'氚云 & 多维表格',i:'cloud',
    hub:{a:{url:'https://www.h3yun.com/workbench',name:'氚云系统',ic:'cloud',c:'#1D93C4'},
         b:{url:'https://www.kdocs.cn/l/clzJynyHOhMg',name:'V9.1 多维表格',ic:'doc',c:'#FF8A00'}}},
-  {k:'news',n:'资讯',ni:'资讯雷达',i:'radar'},
-  {k:'todo',n:'待办',ni:'待办 & 排期',i:'check'},
-  {k:'idea',n:'一学',ni:'每日一学',i:'cap'},
-  {k:'io',n:'出入库',ni:'出入库',i:'truck'},
-  {k:'v9',n:'物管',ni:'业务数据',i:'box'},
   {k:'me',n:'我的',ni:'数据 & 设置',i:'user'}
 ];
 function todayCount(){
@@ -1373,72 +1372,14 @@ function pageHome(){
       soon.map(function(x){return todoItem(x)}).join('')+'</div>';
   }
 
-  h+='<div class="grid2">';
-  h+='<div class="card"><div class="card-h"><h3>'+ic('radar','var(--sky)',16)+'重点情报</h3><button class="btn xs" data-tab="news">查看全部</button></div>'+
-     (hotNews.length? hotNews.map(function(n){
-        var hits=hitKw(n.title+n.sum);
-        return '<div class="rowline">'+
-          '<div style="font-size:13.5px;font-weight:500;line-height:1.55">'+markKw(n.title)+'</div>'+
-          '<div class="srcline" style="margin-top:5px">'+esc(n.src)+' · '+cn(n.date)+
-          (hits.length?' · <span style="color:var(--red)">重点</span>':'')+'</div></div>';
-      }).join('') : '<div class="empty">'+mascot('star')+'<p>暂无今日资讯</p><span>去资讯雷达导入或手动添加</span></div>')+
-     '</div>';
   h+='<div class="card"><div class="card-h"><h3>'+ic('cap','var(--violet)',16)+'今日一学</h3><button class="btn xs" data-tab="idea">查看全部</button></div>'+
      (learnFeature?
        '<div class="rowline"><div style="font-size:13.5px;font-weight:600;line-height:1.55">'+esc(learnFeature.title.slice(0,46))+(learnFeature.title.length>46?'…':'')+'</div><div class="srcline" style="margin-top:5px">'+esc(learnFeature.cat)+' · '+(learnFeature.src||'').slice(0,18)+'</div></div>'
        :'<div class="empty">'+mascot('star')+'<p>暂无每日一学</p><span>今晚 20:00 自动抓第一份</span></div>')+
      '</div>';
-  h+='</div>';
   return h;
 }
 
-/* ================= 页面：资讯雷达 ================= */
-function pageNews(){
-  var t0=today(),news=getNews().slice(),m=getMeta();
-  var cats=['全部','行业','工具','热点','政策'];
-  news.sort(function(a,b){
-    var ha=hitKw(a.title+a.sum).length>0||a.top, hb=hitKw(b.title+b.sum).length>0||b.top;
-    if(ha!==hb) return ha?-1:1;
-    if(a.date!==b.date) return a.date<b.date?1:-1;
-    return 0;
-  });
-  var list=state.newsFilter==='全部'?news:news.filter(function(n){return n.cat===state.newsFilter});
-  var h='';
-  h+='<div class="page-head"><h2>资讯雷达</h2><span class="sub">最后更新：'+esc(m.newsUpdated||'从未')+'</span></div>';
-  h+='<div class="card"><div class="card-h"><h3>'+ic('star','#F5A300',16)+'重点关注词<span class="srcline" style="font-weight:450;margin-left:2px">命中自动标红置顶</span></h3>'+
-     '<button class="btn xs" data-act="addKw">+ 加词</button></div><div style="margin-bottom:-6px">'+
-     getKw().map(function(k,i){return '<span class="kw">'+esc(k)+'<button data-act="delKw" data-i="'+i+'">×</button></span>'}).join('')+
-     '</div></div>';
-  h+='<div class="card-h" style="margin-bottom:12px"><div class="tabs">'+
-     cats.map(function(c){return '<button data-act="newsFilter" data-v="'+c+'" class="'+(state.newsFilter===c?'on':'')+'">'+c+'</button>'}).join('')+
-     '</div><div class="btn-row"><button class="btn sm" data-act="importNews">批量导入</button><button class="btn sm p" data-act="addNews">'+ic('plus','#fff',14)+'手动添加</button></div></div>';
-  if(!list.length){
-    h+='<div class="card"><div class="empty">'+mascot('truck')+'<p>这里还没有资讯</p><span>联网失败时会保留上一次数据，不会白屏</span></div></div>';
-  }else{
-    h+= list.map(function(n){
-      var hits=hitKw(n.title+' '+n.sum);
-      var isToday=n.date===t0;
-      return '<div class="card" style="padding:16px 18px">'+
-        '<div class="it-meta" style="margin:0 0 8px">'+
-          (hits.length?'<span class="pill red">重点 · '+kwPlain(hits.slice(0,2))+'</span>':'')+
-          (isToday?'<span class="pill blue">今日</span>':'')+
-          '<span class="pill gray">'+esc(n.cat)+'</span>'+
-        '</div>'+
-        '<div style="font-size:15px;font-weight:600;line-height:1.5;letter-spacing:-.015em">'+markKw(n.title)+'</div>'+
-        (n.sum?'<div style="margin-top:7px;font-size:13.5px;color:var(--t2);font-weight:450;line-height:1.65">'+markKw(n.sum)+'</div>':'')+
-        '<div class="card-h" style="margin:12px 0 0"><span class="srcline">'+esc(n.src)+' · '+esc(n.date)+'</span>'+
-        '<div class="btn-row">'+(n.url?'<a class="btn xs" href="'+esc(n.url)+'" target="_blank" rel="noopener">原文</a>':'')+
-        '<button class="btn xs" data-act="news2idea" data-id="'+n.id+'">转选题</button>'+
-        '<button class="btn xs r" data-act="delNews" data-id="'+n.id+'">删除</button></div></div>'+
-      '</div>';
-    }).join('');
-  }
-  h+='<div class="card"><div class="card-h"><h3>'+ic('down','var(--sky)',16)+'每日自动更新怎么接</h3></div>'+
-     '<div style="font-size:13.5px;font-weight:450;line-height:1.75;color:var(--t2)">纯静态网页无法直接跨域抓取新闻站点。可行做法：由自动化任务每天早晨生成下面这种 JSON，点「批量导入」粘贴即可，命中重点词的会自动标红置顶。'+
-     '<div class="mono codebox" style="margin-top:10px">'+
-     esc('[{"title":"标题","src":"来源","date":"'+t0+'","cat":"行业","sum":"一句话摘要","url":"https://..."}]')+'</div></div></div>';
-  return h;
-}
 /* ================= 页面：待办 & 排期 ================= */
 function pageTodo(){
   var t0=today();
@@ -2021,7 +1962,7 @@ function render(){
   var f=_ext?function(){
     if(_ext.hub) return pageExtHub(_ext.hub);
     return pageExt(_ext.url,_ext.ni);
-  }:({home:pageHome,news:pageNews,todo:pageTodo,idea:pageLearn,io:pageIo,v9:pageV9,me:pageMe}[state.tab]);
+  }:({home:pageHome,todo:pageTodo,idea:pageLearn,io:pageIo,v9:pageV9,me:pageMe}[state.tab]);
   v.innerHTML='<div class="page">'+f()+'</div>';
   renderNav();
   var sub=document.getElementById('tbSub');
@@ -4994,7 +4935,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v32.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v33.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
