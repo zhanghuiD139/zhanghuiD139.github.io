@@ -4226,67 +4226,6 @@ function buildXlsx(sheets){
   files.push({name:'docProps/app.xml',data:_u8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>小马工作台</Application></Properties>')});
   return new Blob([_zipStore(files)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
-function _v9Table(recs,fields,zh){
-  var rows=[fields.map(function(f){return (zh&&zh[f])||f;})];
-  (recs||[]).forEach(function(r){ rows.push(fields.map(function(f){ var v=r[f]; return v===undefined?null:v; })); });
-  return rows;
-}
-function _v9Sheets(d){
-  var inv=d.inventory||{}, io=d.io||{}, st=d.storage||{}, q=d.query||{};
-  var ZH={pid:'项目号',sale:'销售合同号',buy:'采购合同号',supplier:'采购端供方',customer:'销售端下家',mode:'内外贸',year:'年份',mid:'单据号',no:'序号',status:'完结状态',overdue:'逾期',product:'产品',ptype:'产品类型',wh:'仓库',amt:'金额(元)',qty:'数量',cnt:'合同数/笔数',type:'产品类型',month:'月份',in_amt:'入库金额(元)',in_qty:'入库数量',out_amt:'出库金额(元)',out_qty:'出库数量',week:'周',dir:'方向',date:'日期',contract:'合同',model:'型号',price:'单价(元)',warehouses:'仓库',months:'月数',sf_no:'顺丰单号',route:'路线',project:'项目',fee:'运费(元)'};
-  var sheets=[];
-  sheets.push({name:'说明',rows:[
-    ['V9.1 物管数据多维表格（Excel 导出）'],
-    ['数据来源',d.source||''],
-    ['生成时间',d.generated_at||''],
-    ['文件ID',d.file_id||''],
-    [''],
-    ['工作表','行数(约)','说明'],
-    ['合同台账',(inv.sheet2_brief||[]).length,'全部合同明细'],
-    ['库存按仓库',(inv.by_warehouse||[]).length,'各仓库库存金额/数量'],
-    ['库存按产品',(inv.product_types||[]).length,'各产品类型库存'],
-    ['逾期合同TOP40',(inv.overdue_contracts||[]).length,'逾期合同清单'],
-    ['合同按年',Object.keys(inv.by_year||{}).length,'按年份汇总'],
-    ['出入库明细',(io.all_detail||[]).length,'全部出入库流水'],
-    ['出入库统计','-','按月/按仓库/按周汇总'],
-    ['仓储费按供应商',(st.by_supplier||[]).length,'各供应商仓储费'],
-    ['仓储费按月',(st.by_month||[]).length,'按月仓储费'],
-    ['顺丰运输明细',(st.sf_shipments||[]).length,'顺丰运输单'],
-    ['查询统计','-','查询追踪汇总']
-  ]});
-  sheets.push({name:'合同台账',rows:_v9Table(inv.sheet2_brief,['pid','sale','buy','supplier','customer','mode','year','mid','no','status','overdue','product','ptype'],ZH)});
-  sheets.push({name:'库存按仓库',rows:_v9Table(inv.by_warehouse,['wh','amt','qty','cnt'],ZH)});
-  sheets.push({name:'库存按产品',rows:_v9Table(inv.product_types,['type','amt','cnt'],ZH)});
-  sheets.push({name:'逾期合同TOP40',rows:_v9Table(inv.overdue_contracts,['项目号','销售合同号','采购合同号','采购端供方','销售端下家','截止日期','仓库','库存金额','产品类型'],ZH)});
-  var yr=inv.by_year||{}, yrecs=Object.keys(yr).map(function(k){return {年:k,amt:yr[k].amt,cnt:yr[k].cnt,overdue:yr[k].overdue};});
-  sheets.push({name:'合同按年',rows:_v9Table(yrecs,['年','amt','cnt','overdue'],ZH)});
-  sheets.push({name:'出入库明细',rows:_v9Table(io.all_detail,['dir','date','pid','contract','model','wh','qty','amt','price'],ZH)});
-  var srows=[['出入库统计']];
-  srows.push(['指标','入库金额(元)','入库数量','出库金额(元)','出库数量','笔数']);
-  var t=io.total||{}; srows.push(['本周期累计',t.in_amt,t.in_qty,t.out_amt,t.out_qty,'']);
-  var tw=io.this_week||{}; srows.push(['本周',tw.in_amt,tw.in_qty,tw.out_amt,tw.out_qty,tw.cnt]);
-  var ms=io.month_summary||{}; srows.push(['本月',ms.in_amt,ms.in_qty,ms.out_amt,ms.out_qty,ms.cnt]);
-  var pws=io.prev_week_summary||{}; if(pws&&pws.in_amt!=null) srows.push(['上周',pws.in_amt,pws.in_qty,pws.out_amt,pws.out_qty,pws.cnt]);
-  srows.push([]); srows.push(['按月份']);
-  _v9Table(io.by_month,['month','in_amt','in_qty','out_amt','out_qty','cnt'],ZH).forEach(function(r,i){if(i>0)srows.push(r);});
-  srows.push([]); srows.push(['按仓库']);
-  _v9Table(io.by_warehouse,['wh','in_amt','out_amt','in_qty','out_qty'],ZH).forEach(function(r,i){if(i>0)srows.push(r);});
-  srows.push([]); srows.push(['按周']);
-  _v9Table(io.weeks,['week','in_amt','out_amt'],ZH).forEach(function(r,i){if(i>0)srows.push(r);});
-  sheets.push({name:'出入库统计',rows:srows});
-  sheets.push({name:'仓储费按供应商',rows:_v9Table(st.by_supplier,['supplier','amt','warehouses','months'],ZH)});
-  sheets.push({name:'仓储费按月',rows:_v9Table(st.by_month,['month','amt'],ZH)});
-  sheets.push({name:'顺丰运输明细',rows:_v9Table(st.sf_shipments,['date','sf_no','route','project','fee'],ZH)});
-  var qrows=[['查询统计汇总']];
-  qrows.push(['总合同数',q.total]); qrows.push(['已查询',q.queried]); qrows.push(['未查询',q.not_queried]); qrows.push(['查询率(%)',q.queried_pct]);
-  qrows.push([]); qrows.push(['查询次数 TOP']);
-  _v9Table(q.top_queried,['项目号','查询次数'],ZH).forEach(function(r,i){if(i>0)qrows.push(r);});
-  qrows.push([]); qrows.push(['未查询样本']);
-  var uf=q.unqueried_sample||[], ufk=uf[0]?Object.keys(uf[0]):[];
-  _v9Table(uf,ufk,ZH).forEach(function(r,i){if(i>0)qrows.push(r);});
-  sheets.push({name:'查询统计',rows:qrows});
-  return sheets;
-}
 async function v9DlXlsx(){
   /* 2026-09-07 辉哥要求：只导出 sheet 2 合同详情 + sheet 3 出入库，按 V9.1 多维表格原表结构（列名/列顺序按 schema）。
      实现：调 server.py /api/v91/raw?sid=2|3 拉 raw records + schema，按 schema 字段顺序铺 xlsx。*/
@@ -4968,7 +4907,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v34.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v35.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
