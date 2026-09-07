@@ -4229,7 +4229,7 @@ function buildXlsx(sheets){
 async function v9DlXlsx(){
   /* 2026-09-07 辉哥要求：只导出 sheet 2 合同详情 + sheet 3 出入库，按 V9.1 多维表格原表结构（列名/列顺序按 schema）。
      实现：调 server.py /api/v91/raw?sid=2|3 拉 raw records + schema，按 schema 字段顺序铺 xlsx。*/
-  var wh=_v9io_wh&&_v9io_wh();
+  var wh=getV9ioWebhook();
   if(!wh||!wh.url){ toast('请先在「数据 & 设置」配置 V9.1 直写通道'); return; }
   toast('正在拉取 V9.1 多维表格原始数据…');
   var base=wh.url.replace(/\/+$/,''), H={'X-Webhook-Token':wh.token||''};
