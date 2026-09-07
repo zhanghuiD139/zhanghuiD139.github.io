@@ -347,6 +347,23 @@ a:hover{text-decoration:underline}
 .qdf input{height:30px;font-size:12.5px;border:1px solid #E8D9BE;border-radius:8px;padding:0 8px;background:#fff;width:130px}
 .qdf select:focus,.qdf input:focus{border-color:var(--ac);outline:none}
 .qdf .srcline{color:var(--t3);font-size:12.5px}
+
+/* 出入库·按产品分组 metric 卡片（2026-09-07）：5 大组 + label/value 两行 → baseline 强制一致 */
+.qd-metric{padding:6px 0 4px;border-bottom:1px dashed var(--line);}
+.qd-metric:last-child{border-bottom:0;}
+.qd-mh{display:grid;grid-template-columns:16% 14% 22% 24% 24%;gap:8px;align-items:stretch;}
+.qd-m{display:flex;flex-direction:column;justify-content:center;min-height:54px;padding:6px 8px;border-right:1px dashed var(--line);box-sizing:border-box;}
+.qd-m:last-child{border-right:0;}
+.qd-m-l{font-size:12px;font-weight:500;color:var(--t3);letter-spacing:.02em;line-height:1.2;margin-bottom:4px;text-align:center;}
+.qd-m-v{font-size:14px;font-weight:600;color:var(--t1);line-height:1.45;word-break:break-all;font-variant-numeric:tabular-nums;text-align:center;}
+.qd-m-u{font-size:11.5px;font-weight:500;color:var(--t3);margin-left:2px;}
+.qd-m-big{font-size:16px;font-weight:700;letter-spacing:-.01em;}
+.qd-m-sub{font-size:11.5px;font-weight:500;color:var(--t3);}
+@media (max-width:780px){
+  .qd-mh{grid-template-columns:repeat(2,1fr);}
+  .qd-m{border-right:0;border-bottom:1px dashed var(--line);}
+}
+
 </style>
 <!-- OCR 引擎：Tesseract.js v5 + PDF.js v4 按需加载，避免拖慢首屏 -->
 <script>
@@ -1646,6 +1663,7 @@ function _qDetailNoField(d){
    - 列宽按内容比例分配（仓库 17% / 单价两列各 9.5% / 库存+入总+出总各 12% / 两个金额各 14.5%）
    - padding 调小（6px → 4px）让列内更紧凑，避免表头/data 在视觉上漂
    align: 不传→right（统一），传 'l' → left（保留扩展位） */
+
 function cellTh(label,align){
   /* v30 终极对齐：center 对齐，列中线 = 内容中点，表头与数据永远中心线一致
      之前 right 对齐右边界齐但中心线不齐；center 让"¥91,190,797.59"和"入金额"中点都落在列中线，与下方内容长短无关 */
@@ -1713,14 +1731,6 @@ function renderDetailGroup(c, events, defaultOpen){
         });
         var html='';
         var _pIdx=0;
-        /* 合同数量查表：(pid,product)→qty；按 brief.products 中的产品名精确匹配 */
-        var _brief=(V9&&V9.inventory&&V9.inventory.sheet2_brief)||[];
-        function _findContractQty(pid,product){
-          if(!pid||!product) return 0;
-          var hit=null;
-          for(var i=0;i<_brief.length;i++){ if(_brief[i].pid===pid){ var bp=_brief[i].product||''; if(bp===product || (bp && product && bp.indexOf(product)>-1) || (product && bp && product.indexOf(bp)>-1)){ hit=_brief[i]; break; } } }
-          return hit? (+hit.qty||0): 0;
-        }
         orderedKeys.forEach(function(k){
           var blk = bucket[k];
           _pIdx++;
@@ -1736,44 +1746,37 @@ function renderDetailGroup(c, events, defaultOpen){
           var stock = inQty - outQty;
           var avgPrice = prices.length? (prices.reduce(function(a,b){return a+b;},0)/prices.length) : 0;
           var avgPriceUsd = avgPrice? (avgPrice/6.9) : 0;
-          var contractQty = _findContractQty(firstP, k);
-          /* 多行堆叠：每产品按仓库拆行（whs 多则多行）；空仓库用 '-' 兜底 */
+          /* 合同数量推算：入总 + max(0, 当前库存) = 已入库 + 在库剩余
+             含义：events 中所有「入」累加 + 剩余库存 = 隐含合同总量（纯出库合同则=0，显示—） */
+          var contractQty = inQty>0 ? (inQty + (stock>0?stock:0)) : 0;
+          /* 多行：每产品按仓库拆行 */
           var whArr = Object.keys(whs).length? Object.keys(whs) : ['-'];
           var ptypeLbl = blk.ptype? '<span class="pill blue" style="margin-left:6px">'+esc(blk.ptype)+'</span>':'';
-          html += '<div class="qd-prod" style="margin:14px 0 8px;padding:12px 14px;background:var(--bg);border:1px solid var(--line);border-radius:10px">'+
-            '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:10px">'+
+          function _cell(label, html, color){
+            return '<div class="qd-m"><div class="qd-m-l">'+label+'</div><div class="qd-m-v" style="'+(color?'color:'+color+';':'')+'">'+html+'</div></div>';
+          }
+          function _unit(html){
+            return '<span class="qd-m-u">'+html+'</span>';
+          }
+          html += '<div class="qd-prod" style="margin:14px 0 8px;padding:14px 16px;background:var(--bg);border:1px solid var(--line);border-radius:10px">'+
+            '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:12px">'+
               '<span class="pill gray">#'+_pIdx+'</span>'+
               '<b style="font-size:14.5px;color:var(--t1);line-height:1.5;word-break:break-all">'+esc(k||'-')+'</b>'+ptypeLbl+
               '<span class="srcline" style="margin-left:auto">流水 '+blk.events.length+' 笔</span>'+
             '</div>'+
-            /* 9 列固定表格：仓库 / 单价（元）/ 单价（$）/ 当前库存 / 合同数量 / 入总 / 出总 / 入金额 / 出金额
-               ★ 多行设计：每个产品按仓库拆分多行展示，表头和数据 cell 全部 center 对齐 → 纵向中轴线完全重合 */
-            '<table class="qd-prod-table" style="width:100%;border-collapse:separate;border-spacing:0;margin-bottom:12px;font-variant-numeric:tabular-nums">'+
-              '<colgroup>'+
-                '<col style="width:14%"><col style="width:9%"><col style="width:9%"><col style="width:11%"><col style="width:11%"><col style="width:10%"><col style="width:10%"><col style="width:13%"><col style="width:13%">'+
-              '</colgroup>'+
-              '<thead><tr style="background:var(--card)">'+
-                cellTh('仓库')+cellTh('单价（元）')+cellTh('单价（$）')+cellTh('当前库存')+cellTh('合同数量')+cellTh('入总')+cellTh('出总')+cellTh('入金额')+cellTh('出金额')+
-              '</tr></thead>'+
-              '<tbody>'+
-              whArr.map(function(wh){
-                var _whTd='padding:10px 4px;font-size:13.5px;font-weight:600;color:var(--t1);text-align:left;border-bottom:1px dashed var(--line);vertical-align:middle;line-height:1.2;word-break:break-all';
-                var _ctrTd='padding:10px 4px;font-size:13.5px;font-weight:600;color:var(--t1);text-align:center;border-bottom:1px dashed var(--line);vertical-align:middle;line-height:1.2';
-                return '<tr>'+
-                  '<td style="'+_whTd+'">'+esc(wh)+'</td>'+
-                  '<td style="'+_ctrTd+'">'+(avgPrice?'¥'+avgPrice.toFixed(2):'<span style="color:var(--t3)">—</span>')+'</td>'+
-                  '<td style="'+_ctrTd+'">'+(avgPrice?'$'+avgPriceUsd.toFixed(2):'<span style="color:var(--t3)">—</span>')+'</td>'+
-                  '<td style="'+_ctrTd+'"><b style="color:'+(stock<0?'var(--red)':(stock>0?'var(--green)':'var(--t3)'))+'">'+fmtRaw(stock)+'</b><span style="color:var(--t3);font-weight:500;font-size:12px;margin-left:3px">个</span></td>'+
-                  '<td style="'+_ctrTd+'"><b>'+(contractQty?fmtRaw(contractQty):'<span style="color:var(--t3)">—</span>')+'</b><span style="color:var(--t3);font-weight:500;font-size:12px;margin-left:3px">个</span></td>'+
-                  '<td style="'+_ctrTd+'color:var(--green)"><b>'+fmtRaw(inQty)+'</b><span style="color:var(--t3);font-weight:500;font-size:12px;margin-left:3px">个</span></td>'+
-                  '<td style="'+_ctrTd+'color:var(--red)"><b>'+fmtRaw(outQty)+'</b><span style="color:var(--t3);font-weight:500;font-size:12px;margin-left:3px">个</span></td>'+
-                  '<td style="'+_ctrTd+'">¥'+fmtRaw(inAmt)+'</td>'+
-                  '<td style="'+_ctrTd+'">¥'+fmtRaw(outAmt)+'</td>'+
-                '</tr>';
-              }).join('')+
-              '</tbody>'+
-            '</table>'+
-            '<div class="tbl-scroll"><table class="v9tbl"><thead><tr><th>日期</th><th>方向</th><th>合同号</th><th>仓库</th><th class="num">数量（个）</th><th class="num">单价（元）</th><th class="num">金额（元）</th></tr></thead><tbody>'+
+            whArr.map(function(wh){
+              return '<div class="qd-metric">'+
+                '<div class="qd-mh">'+
+                  _cell('仓库', esc(wh)) +
+                  _cell('单价', (avgPrice?'¥'+avgPrice.toFixed(2)+'<br><span class="qd-m-sub">$'+avgPriceUsd.toFixed(2)+'</span>':'<span style="color:var(--t3)">—</span>')) +
+                  _cell('库存', '<span class="qd-m-big" style="color:'+(stock<0?'var(--red)':(stock>0?'var(--green)':'var(--t3)'))+'">'+fmtRaw(stock)+'</span>'+_unit('个') + '<br><span class="qd-m-sub">合同 <b style="color:'+(contractQty?'var(--t1)':'var(--t3)')+'">'+(contractQty?fmtRaw(contractQty):'—')+'</b> 个</span>') +
+                  _cell('流水', '<span style="color:var(--green)"><b>'+fmtRaw(inQty)+'</b> 个 入</span><br><span style="color:var(--red)"><b>'+fmtRaw(outQty)+'</b> 个 出</span>') +
+                  _cell('金额', '<span style="color:var(--green)"><b>¥'+fmtRaw(inAmt)+'</b> 入</span><br><span style="color:var(--red)"><b>¥'+fmtRaw(outAmt)+'</b> 出</span>') +
+                '</div>'+
+              '</div>';
+            }).join('')+
+            /* 明细表保持原样 */
+            '<div class="tbl-scroll" style="margin-top:10px"><table class="v9tbl"><thead><tr><th>日期</th><th>方向</th><th>合同号</th><th>仓库</th><th class="num">数量（个）</th><th class="num">单价（元）</th><th class="num">金额（元）</th></tr></thead><tbody>'+
             blk.events.slice().sort(function(a,b){return a.date<b.date?1:-1}).map(function(r){
               var dir=r.dir==='入'?'<span style="color:#0A8F4A;font-weight:700">入</span>':'<span style="color:#E03A3F;font-weight:700">出</span>';
               return '<tr><td>'+esc(r.date)+'</td><td>'+dir+'</td><td>'+esc(r.contract||'')+'</td><td>'+esc(r.wh||'-')+'</td><td class="num">'+fmtRaw(r.qty)+'</td><td class="num">'+(r.price?'¥'+r.price.toFixed(2):'—')+'</td><td class="num">¥'+fmtRaw(r.amt)+'</td></tr>';
