@@ -949,7 +949,7 @@ function pageExtHub(hub){
   /* V9.1 多维表格一键下载：先 fetch 最新 data.v9.json，再触发浏览器下载 */
   '<button data-act="v9DlXlsx" class="card ext-hub-card" style="display:flex;align-items:center;gap:14px;padding:18px 22px;width:320px;max-width:90vw;border:1px dashed #FF8A00;border-radius:14px;background:#FFF7E6;cursor:pointer;font-family:inherit">'+
     '<div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#FFC02E,#FF8A00);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic('doc','#fff',22)+'</div>'+
-    '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">V9.1 多维表格 · 下载 Excel</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">导出为 .xlsx（多工作表：合同/出入库/仓储费/查询）</div></div>'+
+    '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">V9.1 多维表格 · 下载 Excel</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">导出为 .xlsx（合同详情 + 出入库，按 V9.1 多维表格原表结构）</div></div>'+
     '<div style="color:var(--ac);font-size:22px;font-weight:700">⬇</div>'+
   '</button>'+
   '</div>';
@@ -4288,26 +4288,59 @@ function _v9Sheets(d){
   return sheets;
 }
 async function v9DlXlsx(){
-  toast('正在拉取最新 V9.1 多维表格并生成 Excel…');
-  var base=_ocrBase()||'', data=null;
+  /* 2026-09-07 辉哥要求：只导出 sheet 2 合同详情 + sheet 3 出入库，按 V9.1 多维表格原表结构（列名/列顺序按 schema）。
+     实现：调 server.py /api/v91/raw?sid=2|3 拉 raw records + schema，按 schema 字段顺序铺 xlsx。*/
+  var wh=_v9io_wh&&_v9io_wh();
+  if(!wh||!wh.url){ toast('请先在「数据 & 设置」配置 V9.1 直写通道'); return; }
+  toast('正在拉取 V9.1 多维表格原始数据…');
+  var base=wh.url.replace(/\/+$/,''), H={'X-Webhook-Token':wh.token||''};
+  var fetchRaw=function(sid){
+    return fetch(base+'/api/v91/raw?sid='+sid,{headers:H,cache:'no-store'}).then(function(r){
+      if(!r.ok) throw new Error('sheet '+sid+' HTTP '+r.status);
+      return r.json();
+    });
+  };
+  var s2, s3;
   try{
-    var r=await fetch(base+'data.v9.json?t='+Date.now(),{cache:'no-store'});
-    if(!r.ok) throw new Error('HTTP '+r.status);
-    data=await r.json();
+    s2=await fetchRaw(2);
+    s3=await fetchRaw(3);
   }catch(e){
-    if(window.V9&&window.V9.inventory){ data={inventory:window.V9.inventory||{},io:window.V9.io||{},storage:window.V9.storage||{},query:window.V9.query||{}}; }
-    if(!data){ toast('取数失败：'+(e&&e.message||'')+' · 请检查网络后重试'); return; }
+    toast('拉取失败：'+(e&&e.message||'')+' · 请检查 V9.1 直写通道是否可达');
+    return;
   }
+  // 按 schema 字段顺序铺 rows（表头=field.name，单元格按 field.raw_name||field.name 取值）
+  function _normRow(rec, fields){
+    var flds=rec.fields||{}, row=[];
+    for(var i=0;i<fields.length;i++){
+      var f=fields[i];
+      var k=f.raw_name||f.name;
+      var v=flds[k];
+      if(v===undefined && f.name!==k) v=flds[f.name];
+      if(v===null||v===undefined) v='';
+      if(Array.isArray(v)) v=v.join('/');
+      if(typeof v==='object') v=JSON.stringify(v);
+      row.push(v);
+    }
+    return row;
+  }
+  var sheets=[];
+  // 第 1 张：合同详情
+  sheets.push({name:'合同详情', rows:[s2.fields.map(function(f){return f.name;})].concat(
+    (s2.records||[]).map(function(r){return _normRow(r,s2.fields);})
+  )});
+  // 第 2 张：出入库
+  sheets.push({name:'出入库', rows:[s3.fields.map(function(f){return f.name;})].concat(
+    (s3.records||[]).map(function(r){return _normRow(r,s3.fields);})
+  )});
   try{
-    var sheets=_v9Sheets(data);
     var blob=buildXlsx(sheets);
     var name='V9.1多维表格_'+today()+'.xlsx';
     var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function(){URL.revokeObjectURL(a.href)},2500);
-    toast('已下载 '+name+'（'+sheets.length+' 个工作表，'+Math.round(blob.size/1024)+' KB）');
+    toast('已下载 '+name+'（合同详情 '+s2.count+' 行 · 出入库 '+s3.count+' 行，'+Math.round(blob.size/1024)+' KB）');
   }catch(e2){
-    try{ v9DlJson(); toast('Excel 生成失败，已降级导出 JSON'); }catch(_){ toast('导出失败：'+(e2&&e2.message||'')); }
+    toast('Excel 生成失败：'+(e2&&e2.message||''));
   }
 }
 function doExportCsv(){
@@ -4935,7 +4968,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v33.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v34.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
