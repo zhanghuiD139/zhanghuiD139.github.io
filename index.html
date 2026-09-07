@@ -3182,87 +3182,116 @@ function ionShowConfirm(d){
   return true;
 }
 
-/* 预通知：确认写入 — 直写 V9.1 sheet3（与 ioFormV9Save 同结构） */
+/* 预通知：确认写入 — 直写 V9.1 sheet3（与 ioFormV9Save 同结构）
+   2026-09-07 改版（辉哥要求）：写入不再自动关模态 → 模态内显示「写入中 → 录入成功/未成功」结果面板；
+   未成功带「重试」（只重发失败条目）与「关闭」按钮，成功显示「录入成功」+「关闭」。
+   旧版根因：closeModal 在 push 前执行，结果只靠 toast 一闪而过，失败重试按钮绑在已关闭模态里根本看不见。 */
 function ionConfirmOk(){
   var d=state._ionDraft;
   if(!d){ toast('草稿已失效，请重新录入'); return false; }
   var sheets=d.sheets;
   var items=d.items;
   var ts=d.ts||Date.now();
-  /* ★ 幂等保护：本次 ts 已写过则不再重复调用 v9ioPushBatch（防止用户连点两次确认按钮造成重复入库） */
+  /* ★ 幂等保护：本次 ts 已写过则不再重复调用 v9ioPushBatch（防止连点造成重复入库） */
   if(state._ionLastWriteTs===ts){
     toast('本次 '+sheets.length+' 条已在写入中，请等响应');
     return false;
   }
   state._ionLastWriteTs=ts;
-  /* ★ 立即禁用"确认写入"按钮（避免重复点击造成 sheet3 重复行） */
-  var _btnOk=document.querySelector('[data-act="ionConfirmOk"]');
-  if(_btnOk){ _btnOk.disabled=true; _btnOk.textContent='⏳ 写入中…'; }
-  /* ★ 清空草稿并切到 form 态前，先保留 sheets/items 给推送用 */
-  var _keepDraft={sheets:sheets, items:items, ts:ts};
-  state._ionDraft=null; state._ionStep='form';
   /* 1) 写入本地 v9io_pending（页面立即可见）+ io 历史 */
   setIo(getIo().concat(items));
   setV9ioPending(getV9ioPending().concat(sheets));
-  /* 2) 自动复制刚保存的 sheets 到剪贴板（兜底通道） */
-  var clipTxt=JSON.stringify(sheets,null,2);
+  /* 2) 自动复制 JSON 到剪贴板（兜底通道，失败也可手动粘贴同步） */
+  try{ var _cp=_copyText(JSON.stringify(sheets,null,2)); if(_cp&&_cp.catch) _cp.catch(function(){}); }catch(e){}
+  state._ionDraft=null; state._ionStep='form';
+  render();
+  /* 3) 推送直写通道（模态保持打开，结果面板在模态内显示） */
   var _wr=getV9ioWebhook();
   var _direct=!!(_wr.mode&&_wr.url&&sheets.length);
   if(_direct){
-    _copyText(clipTxt);
-    var dirLabel=d.dir==='in'?'入库':'出库';
-    toast('⏳ 已保存 '+items.length+' 条、'+dirLabel+'，正在直写 V9.1 多维表格…');
+    _ionWrite(sheets, _wr, ts, sheets.length);
   }else{
-    _copyText(clipTxt).then(function(ok){
-      if(ok){ toast('已保存 '+items.length+' 条出入库 + 已自动复制同步 JSON 到剪贴板。\n回 WorkBuddy 对话告诉我：「同步上面」\n我立即用 kdocs 写入 V9.1 多维表格 sheet 3。'); }
-      else   { toast('已保存 '+items.length+' 条出入库（自动复制失败，请手动复制顶部「待同步」卡片的 JSON）'); }
-    });
-  }
-  /* 3) 关掉 modal + 渲染 */
-  try{ closeModal(); }catch(e){}
-  render();
-  /* 4) 推送直写通道 */
-  if(_direct){
-    v9ioPushBatch(sheets,_wr).then(function(rs){
-      state._ionLastWriteTs=null;
-      if(rs.ok){
-        var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;});
-        setV9ioPending(remaining);
-        if(_wr.mode==='kdocs'){
-          var conf=(rs.succR||[]).filter(function(r){return r.confirmed!==false;}).length;
-          toast((conf?'✅ 已直写 V9.1 ':'📤 已触发 V9.1 ')+rs.succ.length+' 条（出入库 + 测算仓储费）\n'+
-                (conf?'':'跨域读不到响应属正常，')+'请到 V9.1 核对一下');
-        }else{
-          toast('✅ 已直写 V9.1 多维表格 '+rs.succ.length+' 条（sheet 3）');
-        }
-      }else if(rs.succ.length){
-        var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;}).concat(rs.fail.map(function(x){return x.sheet;}));
-        setV9ioPending(remaining);
-        toast('⚠️ 直写部分成功（'+rs.succ.length+'/'+sheets.length+'），'+rs.fail[0].err+'。剩余条目已保留在待同步区。');
-      }else{
-        /* ★ 全部失败：恢复按钮让用户重试（不必重走整个确认流程） */
-        if(_btnOk){
-          _btnOk.disabled=false;
-          _btnOk.textContent='🔁 重试写入 V9.1 sheet3';
-          _btnOk.dataset.act='ionConfirmOk';
-          _btnOk.onclick=function(){
-            state._ionStep='confirm';
-            state._ionDraft=_keepDraft;
-            var p=document.getElementById('ionConfirmPanel');
-            if(p) p.scrollIntoView({behavior:'smooth'});
-            ionConfirmOk();
-          };
-        }
-        toast('⚠️ 直写失败：'+rs.fail[0].err+'。\n已自动复制 JSON，去对话说「同步上面」\n或点按钮「🔁 重试写入」');
-      }
-      render();
-    }).catch(function(err){
-      state._ionLastWriteTs=null;
-      toast('⚠️ 直写异常：'+String(err&&err.message||err)+'。已自动复制 JSON，去对话说「同步上面」');
-      render();
-    });
+    _ionWriteResult({ok:false,succ:[],fail:sheets.map(function(s){return {sheet:s,err:'未配置 V9.1 直写通道（数据已存待同步区，JSON 已复制到剪贴板）'};})}, sheets, null, ts, sheets.length);
   }
   return true;
+}
+/* 写入执行：渲染写入中面板 → 批量推送 → 渲染结果面板（succeededN/totalN 跨轮累计） */
+function _ionWrite(sheets, wr, ts, totalN, doneN){
+  var done=doneN||0;
+  var panel=document.getElementById('ionConfirmPanel');
+  if(panel){
+    panel.innerHTML='<div style="padding:24px 16px;text-align:center;background:#FFF8E8;border:1.5px solid #F0D48A;border-radius:14px">'
+      +'<div style="font-size:26px">⏳</div>'
+      +'<div style="font-size:16px;font-weight:800;color:#9A6B00;margin-top:6px">正在写入 V9.1 多维表格…</div>'
+      +'<div style="font-size:12.5px;color:var(--t3);margin-top:6px">本批 '+sheets.length+' 条'+(done?('（此前已成功 '+done+' 条）'):'')+'，请稍候，不要关闭本窗口</div>'
+      +'</div>';
+    panel.scrollIntoView({behavior:'smooth', block:'center'});
+  }
+  v9ioPushBatch(sheets,wr).then(function(rs){
+    state._ionLastWriteTs=null;
+    /* 更新待同步区：本批 ts 全部剔除，失败的再放回去 */
+    var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;});
+    if(rs.fail.length) remaining=remaining.concat(rs.fail.map(function(x){return x.sheet;}));
+    setV9ioPending(remaining);
+    _ionWriteResult(rs, sheets, wr, ts, totalN, done);
+    render();
+  }).catch(function(err){
+    state._ionLastWriteTs=null;
+    var msg=String(err&&err.message||err);
+    _ionWriteResult({ok:false,succ:[],fail:sheets.map(function(s){return {sheet:s,err:msg};})}, sheets, wr, ts, totalN, done);
+    render();
+  });
+}
+/* 结果面板：成功=绿「录入成功」+关闭；失败=红「未成功」+原因+重试/关闭 */
+function _ionWriteResult(rs, batchSheets, wr, ts, totalN, doneN){
+  var panel=document.getElementById('ionConfirmPanel');
+  var done=doneN||0;
+  if(!panel) return;
+  var succN=rs.succ.length, failN=rs.fail.length;
+  var h='';
+  if(rs.ok){
+    state._ionRetry=null;
+    h='<div style="padding:26px 16px;text-align:center;background:#E8F7EE;border:1.5px solid #9BD9B4;border-radius:14px">'
+      +'<div style="font-size:30px">✅</div>'
+      +'<div style="font-size:18px;font-weight:800;color:#1F7A41;margin-top:8px">录入成功</div>'
+      +'<div style="font-size:13px;color:var(--t3);margin-top:8px;line-height:1.7">已写入 V9.1 多维表格 sheet3 共 <b style="color:#1F7A41">'+(done+succN)+'</b> 条'+(done?('（含此前成功 '+done+' 条）'):'')+'<br>请到 V9.1 多维表格核对</div>'
+      +'<button type="button" class="btn p" data-act="ionCloseWrite" style="margin-top:18px;min-width:170px">关闭</button>'
+      +'</div>';
+  }else{
+    var firstErr=(rs.fail[0]&&rs.fail[0].err)||'未知错误';
+    state._ionRetry={sheets:rs.fail.map(function(x){return x.sheet;}), wr:wr, ts:ts, totalN:totalN, done:done+succN};
+    h='<div style="padding:24px 16px;text-align:center;background:#FDEDED;border:1.5px solid #E8A0A0;border-radius:14px">'
+      +'<div style="font-size:30px">❌</div>'
+      +'<div style="font-size:18px;font-weight:800;color:#C0392B;margin-top:8px">未成功</div>'
+      +'<div style="font-size:13px;color:var(--t3);margin-top:8px">'+(succN?('成功 '+succN+' 条 / 失败 '+failN+' 条'):'全部 '+failN+' 条写入失败')+'（本批共 '+totalN+' 条）</div>'
+      +'<div style="font-size:12px;color:#C0392B;margin-top:8px;word-break:break-all;line-height:1.6">原因：'+esc(firstErr)+'</div>'
+      +'<div style="font-size:12px;color:var(--t3);margin-top:8px;line-height:1.6">失败条目已保留在待同步区，JSON 已自动复制到剪贴板（兜底）</div>'
+      +'<div style="margin-top:18px;display:flex;gap:10px;justify-content:center">'
+      +'<button type="button" class="btn" data-act="ionCloseWrite" style="min-width:110px">关闭</button>'
+      +'<button type="button" class="btn p" data-act="ionRetryWrite" style="min-width:150px;font-weight:700">🔁 重试写入</button>'
+      +'</div></div>';
+  }
+  panel.innerHTML=h;
+  panel.scrollIntoView({behavior:'smooth', block:'center'});
+}
+/* 重试写入：只重发上轮失败的条目 */
+function ionRetryWrite(){
+  var r=state._ionRetry;
+  if(!r||!r.sheets||!r.sheets.length){ toast('没有需要重试的条目'); return; }
+  var wr=r.wr&&r.wr.url?r.wr:getV9ioWebhook();
+  _ionWrite(r.sheets, wr, r.ts, r.totalN, r.done||0);
+}
+/* 关闭结果页：数据已入本地/待同步区；顺带重置预通知表单（下次打开为空表，不会误重复提交） */
+function ionCloseWrite(){
+  state._ionRetry=null;
+  try{ closeModal(); }catch(e){}
+  var panel=document.getElementById('ionConfirmPanel');
+  if(panel) panel.innerHTML='';
+  var btnSave=document.querySelector('[data-act="ionSave"]');
+  if(btnSave) btnSave.style.display='';
+  _IO_NOTICE_ROWS=[_ionRowBlank()];
+  state._ionStep='form';
+  render();
 }
 
 /* 预通知：返回修改 — 隐藏 ionConfirmPanel，恢复主按钮 */
@@ -4847,6 +4876,8 @@ document.addEventListener('click',function(e){
   if(act==='ionSave'){ ionOnOk(); return; }
   if(act==='ionConfirmOk'){ ionConfirmOk(); return; }
   if(act==='ionConfirmBack'){ ionConfirmBack(); return; }
+  if(act==='ionRetryWrite'){ ionRetryWrite(); return; }
+  if(act==='ionCloseWrite'){ ionCloseWrite(); return; }
   if(act==='ionCancel'){
     if(_ION_SAVED_RESTART_T){ clearTimeout(_ION_SAVED_RESTART_T); _ION_SAVED_RESTART_T=null; }
     /* 预通知确认态下点「取消」= 返回修改 */
@@ -5131,7 +5162,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v36.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v37.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
