@@ -4337,12 +4337,19 @@ async function v9DlInv(){
   var whF=findField(/^仓库\s*$/);
   var prodF=findField(/^产品(?!类型)/);
   var pidF=findField(/项目号/);
-  var qtyF=findField(/库存数量|^数量$|现有数量/);
+  /* V9.1 真实字段（2026-09-07 实拉 schema）：库存(Formula, 0=合同完结) / 单价（元）(Currency) */
+  var qtyF=findField(/^库存\s*$/)||findField(/库存数量|现有数量|^数量$/);
+  var priceF=findField(/^单价（元）/)||findField(/^单价/);
   if(!whF){ toast('合同详情表未找到「仓库」字段（请检查 sheet 2 schema）'); return; }
+  if(!qtyF){ toast('合同详情表未找到「库存」字段（请检查 sheet 2 schema）'); return; }
   var whK=whF.raw_name||whF.name, prodK=prodF?(prodF.raw_name||prodF.name):'', pidK=pidF?(pidF.raw_name||pidF.name):'', qtyK=qtyF?(qtyF.raw_name||qtyF.name):'';
+  var priceK=priceF?(priceF.raw_name||priceF.name):'';
+  /* 库存为 0 → 合同已完结，不在统计维度（辉哥规则） */
+  function done(r){ return _v9InvNum((r.fields||{})[qtyK])<=0; }
   /* 收集「最后一个仓库」+ 计数（多值分隔：中文逗号/分号/顿号/斜线 → 取末段） */
   var whMap={};
   (s2.records||[]).forEach(function(rec){
+    if(done(rec)) return;   /* 库存=0（已完结）不进统计维度 */
     var v=(rec.fields||{})[whK];
     if(v===undefined||v===null||v==='') return;
     if(Array.isArray(v)) v=v.join(',');
@@ -4369,23 +4376,27 @@ async function v9DlInv(){
     var sel=checked.value;
     /* 立即关模态，后台生成 */
     setTimeout(function(){
-      try{ _v9InvGen(s2, whK, prodK, pidK, qtyK, sel); }
+      try{ _v9InvGen(s2, whK, prodK, pidK, qtyK, sel, priceK); }
       catch(err){ toast('生成失败：'+(err&&err.message||'')); }
     }, 50);
     return true;
   }, {icon:'box'});
 }
-function _v9InvGen(s2, whK, prodK, pidK, qtyK, selWh){
+/* 库存/单价数值解析：容错逗号/空格/字符串数字；无效视为 0（0=已完结不入盘点） */
+function _v9InvNum(x){ if(x===undefined||x===null||x==='') return 0; var n=parseFloat(String(x).replace(/[,，\s]/g,'')); return isNaN(n)?0:n; }
+function _v9InvGen(s2, whK, prodK, pidK, qtyK, selWh, priceK){
   var rows=[];
   (s2.records||[]).forEach(function(rec){
     var flds=rec.fields||{};
+    if(_v9InvNum(flds[qtyK])<=0) return;   /* 库存=0（合同已完结）不入盘点 */
     var v=flds[whK]; if(v===undefined||v===null||v==='') return;
     if(Array.isArray(v)) v=v.join(',');
     var parts=String(v).replace(/[，；、\/]/g,',').split(',').map(function(x){return x.trim();}).filter(Boolean);
     var last=parts[parts.length-1]||'';
     if(last!==selWh) return;
     function get(k){var x=flds[k]; if(x===undefined||x===null||x==='') return ''; if(Array.isArray(x)) return x.join('/'); if(typeof x==='object') return JSON.stringify(x); return x;}
-    rows.push([rows.length+1, get(pidK), get(prodK), '', '', get(qtyK), '', '']);
+    var pr=_v9InvNum(flds[priceK]); var prTxt=pr?(''+(Math.round(pr*100)/100)):'';
+    rows.push([rows.length+1, get(pidK), get(prodK), prTxt, '', get(qtyK), '', '']);
   });
   if(!rows.length){ toast('所选仓库没有匹配的合同记录'); return; }
   var d=new Date();
@@ -4418,7 +4429,7 @@ function _xlsxInvBuild(rows, whName, todayCN){
       '<fills count="3">'+
         '<fill><patternFill patternType="none"/></fill>'+
         '<fill><patternFill patternType="gray125"/></fill>'+
-        '<fill><patternFill patternType="solid"><fgColor rgb="FFFFE0B2"/></patternFill></fill>'+
+        '<fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/></patternFill></fill>'+
       '</fills>'+
       '<borders count="2">'+
         '<border><left/><right/><top/><bottom/><diagonal/></border>'+
@@ -4476,11 +4487,10 @@ function _xlsxInvBuild(rows, whName, todayCN){
     sc('E'+signRow,'',6,false)+sc('F'+signRow,'',6,false)+sc('G'+signRow,'',6,false)+sc('H'+signRow,'',6,false)+
     '</row>';
   sh+='</sheetData>'+
-    '<mergeCells count="5">'+
+    '<mergeCells count="4">'+
       '<mergeCell ref="A1:H1"/>'+
       '<mergeCell ref="A2:H2"/>'+
       '<mergeCell ref="A3:H3"/>'+
-      '<mergeCell ref="A4:H4"/>'+
       '<mergeCell ref="A'+signRow+':H'+signRow+'"/>'+
     '</mergeCells>'+
     '<pageMargins left="0.5" right="0.5" top="0.5" bottom="0.5" header="0.3" footer="0.3"/>'+
@@ -5163,7 +5173,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v38.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v39.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
