@@ -4576,6 +4576,7 @@ document.addEventListener('click',function(e){
 
   if(act==='export'){doExport();return}
   if(act==='v9DlXlsx'){v9DlXlsx();return}
+  if(act==='v9DlInv'){v9DlInv();return}
   if(act==='exportCsv'){doExportCsv();return}
   if(act==='import'){
     openModal('导入恢复','<div style="font-size:14px;font-weight:700;line-height:1.7">选择之前导出的 JSON 备份文件。<br><span style="color:#FF5B5B">导入会覆盖当前全部数据，不限条数。</span></div>','选择文件',function(){
@@ -5162,7 +5163,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v37.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v38.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
