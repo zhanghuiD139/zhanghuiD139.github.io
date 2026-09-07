@@ -3153,6 +3153,8 @@ function ionOnOk(){
   /* 隐藏主按钮组，显示确认态按钮组 */
   var btnSave=document.querySelector('[data-act="ionSave"]');
   if(btnSave) btnSave.style.display='none';
+  /* 关键提示：「已记录数据，请点底部'确认写入 V9.1 sheet3'」—— 解决「点了第一次以为写入成功」造成的"有时写有时没写"感知 bug */
+  toast('✅ 已记录 '+d.sheets.length+' 条预通知数据。\n请滚动到底部，点「确认写入 V9.1 sheet3」才真正入库');
   return;
 }
 
@@ -3221,10 +3223,21 @@ function ionConfirmOk(){
   var sheets=d.sheets;
   var items=d.items;
   var ts=d.ts||Date.now();
+  /* ★ 幂等保护：本次 ts 已写过则不再重复调用 v9ioPushBatch（防止用户连点两次确认按钮造成重复入库） */
+  if(state._ionLastWriteTs===ts){
+    toast('本次 '+sheets.length+' 条已在写入中，请等响应');
+    return false;
+  }
+  state._ionLastWriteTs=ts;
+  /* ★ 立即禁用"确认写入"按钮（避免重复点击造成 sheet3 重复行） */
+  var _btnOk=document.querySelector('[data-act="ionConfirmOk"]');
+  if(_btnOk){ _btnOk.disabled=true; _btnOk.textContent='⏳ 写入中…'; }
+  /* ★ 清空草稿并切到 form 态前，先保留 sheets/items 给推送用 */
+  var _keepDraft={sheets:sheets, items:items, ts:ts};
+  state._ionDraft=null; state._ionStep='form';
   /* 1) 写入本地 v9io_pending（页面立即可见）+ io 历史 */
   setIo(getIo().concat(items));
   setV9ioPending(getV9ioPending().concat(sheets));
-  state._ionDraft=null; state._ionStep='form';
   /* 2) 自动复制刚保存的 sheets 到剪贴板（兜底通道） */
   var clipTxt=JSON.stringify(sheets,null,2);
   var _wr=getV9ioWebhook();
@@ -3245,6 +3258,7 @@ function ionConfirmOk(){
   /* 4) 推送直写通道 */
   if(_direct){
     v9ioPushBatch(sheets,_wr).then(function(rs){
+      state._ionLastWriteTs=null;
       if(rs.ok){
         var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;});
         setV9ioPending(remaining);
@@ -3260,8 +3274,25 @@ function ionConfirmOk(){
         setV9ioPending(remaining);
         toast('⚠️ 直写部分成功（'+rs.succ.length+'/'+sheets.length+'），'+rs.fail[0].err+'。剩余条目已保留在待同步区。');
       }else{
-        toast('⚠️ 直写失败：'+rs.fail[0].err+'。\n已自动复制 JSON，去对话说「同步上面」');
+        /* ★ 全部失败：恢复按钮让用户重试（不必重走整个确认流程） */
+        if(_btnOk){
+          _btnOk.disabled=false;
+          _btnOk.textContent='🔁 重试写入 V9.1 sheet3';
+          _btnOk.dataset.act='ionConfirmOk';
+          _btnOk.onclick=function(){
+            state._ionStep='confirm';
+            state._ionDraft=_keepDraft;
+            var p=document.getElementById('ionConfirmPanel');
+            if(p) p.scrollIntoView({behavior:'smooth'});
+            ionConfirmOk();
+          };
+        }
+        toast('⚠️ 直写失败：'+rs.fail[0].err+'。\n已自动复制 JSON，去对话说「同步上面」\n或点按钮「🔁 重试写入」');
       }
+      render();
+    }).catch(function(err){
+      state._ionLastWriteTs=null;
+      toast('⚠️ 直写异常：'+String(err&&err.message||err)+'。已自动复制 JSON，去对话说「同步上面」');
       render();
     });
   }
@@ -3418,8 +3449,9 @@ function ionRenderCanvas(){
   ctx.fillStyle=dirColorDeep;
   ctx.font='700 12px "PingFang SC","Microsoft YaHei",sans-serif';
   // 画表头（按 col.align 居中/左对齐 → 表头与数据列中心线绝对重合）
+  /* 表头 baseline：thH=28, 12px 字 → baseline = thY + (28-12)/2 + 12*0.85 ≈ thY+22 */
   cols.forEach(function(c){
-    drawColText(ctx, c.k, c, thY+18, dirColorDeep, '700 12px "PingFang SC","Microsoft YaHei",sans-serif');
+    drawColText(ctx, c.k, c, thY + 18, dirColorDeep, '700 12px "PingFang SC","Microsoft YaHei",sans-serif');
   });
   y=thY+thH+4;
   // 数据行
@@ -3448,16 +3480,24 @@ function ionRenderCanvas(){
     ctx.fillStyle=bg;
     ctx.fillRect(cardX, y, cardW, thisRowH-2);
     // 仓库
-    drawColText(ctx, r.wh, cols[0], y+25, '#222', '600 13px "PingFang SC","Microsoft YaHei",sans-serif');
+    /* 13px 字 baseline 偏移 ≈ fontSize*0.85 = 11px */
+    var _txtBy = y + Math.floor(thisRowH/2) + 11;
+    drawColText(ctx, r.wh, cols[0], _txtBy, '#222', '600 13px "PingFang SC","Microsoft YaHei",sans-serif');
     // 产品（多行 → 用 wrapText 实际绘制）
-    var prodStartY=y+18;
-    var _drawLines=wrapText(ctx, prodTxt, cols[1].x, prodStartY, cols[1].w-4, 18, 13);
+    /* 产品 col 垂直中线对齐：起点 = y + (thisRowH - 行数*lineHeight)/2 + 8 */
+    /* 产品 col：单行 baseline = rowCenter + 11；多行 = rowCenter + 11 - (lines-1)*9 */
+    var _prodStartY = y + Math.floor(thisRowH/2) + 11 - (prodLines.length - 1) * 9;
+    if(_prodStartY < y+8) _prodStartY = y+8;
+    var _drawLines=wrapText(ctx, prodTxt, cols[1].x, _prodStartY, cols[1].w-4, 18, 13);
     // 规格/体积
-    drawColText(ctx, r.vol, cols[2], y+25, '#777', '12px "PingFang SC","Microsoft YaHei",sans-serif');
+    drawColText(ctx, r.vol, cols[2], _txtBy, '#777', '12px "PingFang SC","Microsoft YaHei",sans-serif');
     // 日期
-    drawColText(ctx, r.date, cols[3], y+25, '#555', '12px "PingFang SC","Microsoft YaHei",sans-serif');
+    drawColText(ctx, r.date, cols[3], _txtBy, '#555', '12px "PingFang SC","Microsoft YaHei",sans-serif');
     // 数量（大字号醒目）
-    drawColText(ctx, String(r.qty), cols[4], y+27, dirColor, '800 17px "PingFang SC","Microsoft YaHei",sans-serif');
+    /* 数量列 17px 字 baseline 偏移比 13px 字大 4px */
+    /* 17px 字 baseline 偏移 ≈ fontSize*0.85 = 14px */
+    var _qtyBy = y + Math.floor(thisRowH/2) + 14;
+    drawColText(ctx, String(r.qty), cols[4], _qtyBy, dirColor, '800 17px "PingFang SC","Microsoft YaHei",sans-serif');
     // 行右侧小圆点
     ctx.fillStyle=dirColor; ctx.font='14px sans-serif';
     ctx.textAlign='right';
