@@ -848,16 +848,19 @@ function _themeHandle(file){
 }
 /* 登录页：未登录时全屏遮罩式登录卡 */
 function pageLogin(){
+  var _lgurl=((getMeta&&getMeta().v9ioWebhookUrl)||'').trim();
   return '<div style="max-width:360px;margin:6vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:30px 26px;box-shadow:var(--sh)">'+
     '<div style="text-align:center;margin-bottom:22px">'+
       '<div style="width:66px;height:66px;border-radius:18px;background:var(--ac-g);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:32px">🧩</div>'+
       '<h1 style="margin:0;font-size:23px;font-weight:700">小马工作台</h1>'+
       '<p class="srcline" style="margin-top:6px">请输入账号密码登录</p>'+
     '</div>'+
-    '<div class="form-row"><label class="fl">账号</label><input type="text" id="lgUser" placeholder="zhanghui" autocomplete="username"></div>'+
+    '<div class="form-row"><label class="fl">账号</label><input type="text" id="lgUser" placeholder="主人：张辉 · 同事：各自账号" autocomplete="username"></div>'+
     '<div class="form-row"><label class="fl">密码</label><input type="password" id="lgPwd" placeholder="请输入密码" autocomplete="current-password"></div>'+
+    '<div class="form-row"><label class="fl">服务器地址 <span style="color:var(--t3);font-weight:400">（隧道重启换地址才改，平时不用动）</span></label>'+
+    '<input type="text" id="lgUrl" value="'+esc(_lgurl)+'" placeholder="https://xxx.trycloudflare.com" autocomplete="off"></div>'+
     '<button class="btn p" data-act="doLogin" style="width:100%;height:38px;margin-top:8px">登 录</button>'+
-    '<p class="srcline" style="margin-top:16px;text-align:center;line-height:1.7">数据全部保存在本机浏览器<br>登录校验仅在前端，请勿存放敏感信息</p>'+
+    '<p class="srcline" style="margin-top:16px;text-align:center;line-height:1.7">主人用「张辉」，同事用各自账号（由主账号开通）<br>服务器在线时走服务端校验 · 离线回落本机账号</p>'+
   '</div>';
 }
 /* 账号编辑表单（主账号增删改用） */
@@ -927,10 +930,12 @@ function loadV9(){
   if(cached && cached.io && !V9){ V9=cached; UPD_MARKED=false; markUpdateRecords(); }
   fetch('data.v9.json?t='+Date.now(),{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){
     V9ERR=''; V9=d; UPD_MARKED=false; markUpdateRecords(); SS('wb_v9_data_v9',d); if(state.tab==='v9')render();
-    /* 自动后台同步：服务端通道可用且本地数据超过 12 小时，静默拉取最新（不弹 toast，成功才提示） */
+    /* 自动后台同步：服务端通道可用且本地数据超过 12 小时，静默拉取最新（不弹 toast，成功才提示）。
+       v43：受限账号（role=user）不自动触发全局同步（服务端亦已 403 拦截）。 */
     try{
       var wh=getV9ioWebhook();
-      if(wh.mode==='server' && wh.url && d.generated_at){
+      var _s0=getSess();
+      if(wh.mode==='server' && wh.url && d.generated_at && !(_s0&&_s0.role==='user')){
         var t=new Date(d.generated_at.replace(/-/g,'/')).getTime();
         if(!isNaN(t) && (Date.now()-t)/3600000 > 12){ syncV9Now(); }
       }
@@ -958,20 +963,24 @@ function syncV9Now(){
   }
   var base=wh.url.replace(/\/+$/,'');
   toast('正在从 V9.1 同步最新数据…');
-  fetch(base+'/api/sync',{method:'POST',headers:{'Content-Type':'application/json','X-Webhook-Token':wh.token||''}})
+  fetch(base+'/api/sync',{method:'POST',headers:_ioAuthHeaders(true)})
     .then(function(r){return r.json().then(function(j){return {ok:r.ok, body:j};});})
     .then(function(res){
-      if(!res.ok || !res.body || !res.body.ok){ throw new Error('sync start failed'); }
-      pollSync(base, wh.token||'', 0);
+      if(!res.ok || !res.body || !res.body.ok){
+        var _e403=((res.body&&res.body.error)||'');
+        if(_e403.indexOf('仅管理员')>-1){ toast('⚠ 受限账号不能触发全局同步'); return; }
+        throw new Error(_e403||'sync start failed');
+      }
+      pollSync(base, 0);
     })
     .catch(function(){ toast('⚠ 同步服务不可用，已改为刷新缓存'); refreshV9(); });
 }
-function pollSync(base, token, n){
+function pollSync(base, n){
   if(n>40){ toast('⚠ 同步超时，请稍后重试'); refreshV9(); return; }
-  fetch(base+'/api/sync-status',{method:'GET',headers:{'X-Webhook-Token':token},cache:'no-store'})
+  fetch(base+'/api/sync-status',{method:'GET',headers:_ioAuthHeaders(false),cache:'no-store'})
     .then(function(r){return r.json();})
     .then(function(st){
-      if(st.running){ setTimeout(function(){ pollSync(base, token, n+1); }, 2500); return; }
+      if(st.running){ setTimeout(function(){ pollSync(base, n+1); }, 2500); return; }
       if(st.error){ toast('⚠ 同步失败：'+(st.error||'').slice(0,80)); refreshV9(); return; }
       if(st.data){ applyV9(st.data, 'live'); toast('✅ 已同步最新数据（生成于 '+st.generated_at+'）'); }
       else { toast('同步未返回数据，已改为刷新缓存'); refreshV9(); }
@@ -987,12 +996,14 @@ function pageV9(){
   }
   var sub=state.v9sub||'inv';
   var h='';
+  var _sV9=getSess();
   h+='<div class="page-head"><h2>'+ic('box','var(--ac)',22)+'业务数据</h2>'+
      '<span class="sub">数据生成于 '+esc(V9.generated_at||'')+(state.v9Src==='live'?' · <b style="color:var(--green)">已实时同步</b>':'')+'</span></div>'+
      (V9ERR?'<div style="border:1px solid var(--red);background:var(--red-s);color:var(--red-t);padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:13px">'+esc(V9ERR)+'</div>':'');
   h+='<div class="btn-row" style="margin-bottom:12px">'+
-     '<button class="btn p" data-act="syncV9Now">'+ic('refresh','#fff',15)+'同步最新数据</button>'+
-     '<button class="btn" data-act="refreshV9">'+ic('down','#fff',15)+'刷新缓存</button></div>';
+     (_sV9&&_sV9.role==='user'?'':'<button class="btn p" data-act="syncV9Now">'+ic('refresh','#fff',15)+'同步最新数据</button>')+
+     '<button class="btn" data-act="refreshV9">'+ic('down','#fff',15)+'刷新缓存</button>'+
+     (_sV9&&_sV9.role==='user'?'<span class="srcline" style="color:var(--t3)">受限账号 · 只读视图（实时查询可用）</span>':'')+'</div>';
   h+='<div class="tabs" style="margin-bottom:16px">'+[['inv','库存货值'],['io','出入库'],['fee','仓储费']].map(function(t){
     return '<button data-act="v9sub" data-v="'+t[0]+'" class="'+(sub===t[0]?'on':'')+'">'+t[1]+'</button>';
   }).join('')+'</div>';
@@ -1853,8 +1864,10 @@ function pageIo(){
   function fUSD(n){if(!n)return '$0';return '$'+(n>=10000?(Math.round(n/100)/100).toLocaleString()+'万':Math.round(n).toLocaleString())}
   var netCls=netCNY>0?'r':(netCNY<0?'b':'g');
   var h='';
+  var _sIo=getSess();
   h+='<div class="page-head"><h2>'+ic('truck','var(--ac)',22)+'出入库</h2><span class="sub">V9.1 自动同步（主体）· 手录兜底（WMS 不可直拉时人工登记）</span></div>'+
-     '<div class="btn-row" style="margin-bottom:12px"><button class="btn p" data-act="syncV9Now">'+ic('refresh','#fff',15)+'同步最新数据</button>'+
+     '<div class="btn-row" style="margin-bottom:12px">'+
+     (_sIo&&_sIo.role==='user'?'':'<button class="btn p" data-act="syncV9Now">'+ic('refresh','#fff',15)+'同步最新数据</button>')+
      '<span class="srcline">'+(V9&&V9.generated_at?('数据生成于 '+esc(V9.generated_at)+(state.v9Src==='live'?' · 已实时同步':'')):'')+'</span></div>';
 
   /* ① 出入库查询：V9.1 自动同步（v9Io 整段：月度出入柱图 / 本周概览 / 出入库时间查询 / 明细） */
@@ -1982,15 +1995,17 @@ function pageMe(){
      '<b>地址：</b><code style="font-size:11.5px;background:var(--w1);padding:1px 6px;border-radius:6px;word-break:break-all">'+esc(_whUrlDisp)+'</code><br>'+
      '<b>Token：</b><code style="font-size:12px;background:var(--w1);padding:1px 6px;border-radius:6px">'+esc(_whTokDisp)+'</code>'+
      (_whAutoAt?'<br><b>上次同步：</b><span style="color:var(--t3)">'+esc(_whAutoAt)+'</span>':'')+'</div>'+
-     '<div class="btn-row" style="margin-top:10px">'+
-       '<button class="btn sm" data-act="v9ioWebhookSet">'+ic('edit','#fff',14)+'手动填 / 改</button>'+
-       '<button class="btn sm" data-act="v9ioWebhookTest">测连通</button>'+
-       '<button class="btn sm" data-act="v9ioWebhookLog">触发日志</button>'+
-       '<button class="btn sm" data-act="v9ioWebhookClear">清除</button>'+
-     '</div>'+
+     (_sess&&_sess.role==='user'
+       ?'<p class="srcline" style="margin-top:10px">受限账号：可实时查询与录入新增，通道配置仅主账号可改。</p>'
+       :'<div class="btn-row" style="margin-top:10px">'+
+        '<button class="btn sm" data-act="v9ioWebhookSet">'+ic('edit','#fff',14)+'手动填 / 改</button>'+
+        '<button class="btn sm" data-act="v9ioWebhookTest">测连通</button>'+
+        '<button class="btn sm" data-act="v9ioWebhookLog">触发日志</button>'+
+        '<button class="btn sm" data-act="v9ioWebhookClear">清除</button>'+
+        '</div>')+
      '<p class="srcline" style="margin-top:10px;line-height:1.8">'+
-     '<b style="color:var(--green)">已默认开启直写：</b>本工作台已内置直写通道，电脑保持开机即点「确认写入」直接进 V9.1 多维表格，无需手动配置。<br>'+
-'<b>注意：</b>本机隧道地址<b>电脑重启后会变化</b>；届时点上方「手动填 / 改」填入新地址（或电脑上双击 v91-crud\一键启动直写.bat 重新扫码）。若顶部显示「未开启」说明地址已失效需重配。<br>'+
+     '<b style="color:var(--green)">账号登录即直写：</b>v43 起出厂内置令牌已撤销（安全收口）。主人登录「张辉」账号、同事登录各自账号后，点「确认写入」即可直进 V9.1，操作留痕可查。<br>'+
+'<b>注意：</b>本机隧道地址<b>电脑重启后会变化</b>；届时主人点上方「手动填 / 改」填入新地址（或电脑上双击 v91-crud\一键启动直写.bat 重新扫码）。若顶部显示「未开启」说明地址已失效需重配。<br>'+
 
      '<span style="color:var(--t3)">说明：金山「自动化流程 webhook 触发」方案已验证在 WPS 个人版不成立（参数只能走 body 且无法解析字段，'+
      '建出来的记录字段全空），故当前固定走本机 server 通道。</span></p></div>';
@@ -2020,16 +2035,19 @@ function pageMe(){
      '<b>iPhone：</b>用 Safari 打开本页 → 底部「分享」→ 向下找「添加到主屏幕」→ 命名「小马工作台」→ 添加。<br>'+
      '<b>安卓：</b>用 Chrome / 夸克打开 → 右上角菜单 → 「添加到主屏幕」/「安装应用」。<br>'+
      '<b>电脑：</b>Chrome / Edge 地址栏右侧出现安装图标，点一下即可独立窗口运行。</div></div>';
-  h+='<div class="card tint-r"><div class="card-h"><h3>'+ic('trash','var(--red)',18)+'危险操作</h3></div>'+
-     '<div class="btn-row"><button class="btn r" data-act="clearSample">清空示例数据</button>'+
-     '<button class="btn r" data-act="clearAll">清空全部数据</button></div>'+
-     '<p class="srcline" style="margin-top:10px">清空不可恢复，会二次确认 + 二级密码。请先导出备份。</p></div>';
+  if(!(_sess&&_sess.role==='user')){
+    h+='<div class="card tint-r"><div class="card-h"><h3>'+ic('trash','var(--red)',18)+'危险操作</h3></div>'+
+       '<div class="btn-row"><button class="btn r" data-act="clearSample">清空示例数据</button>'+
+       '<button class="btn r" data-act="clearAll">清空全部数据</button></div>'+
+       '<p class="srcline" style="margin-top:10px">清空不可恢复，会二次确认 + 二级密码。请先导出备份。</p></div>';
+  }
   h+='<div class="card"><div class="card-h"><h3>'+ic('doc','var(--green)',16)+'说明与边界</h3></div>'+
      '<div style="font-size:13.2px;font-weight:500;line-height:1.85;color:var(--t2)">'+
      '1. 微信/钉钉待办无法被网页直接读取（端内私有数据、无开放接口），本工作台提供「粘贴消息转待办」代替。<br>'+
      '2. 资讯抓取需服务端支持，当前为 JSON 导入 + 本地缓存，联网失败保留上一次数据。<br>'+
      '3. 页面部署后公网可访问，请勿在页面里预填涉密或个人敏感信息。<br>'+
-     '4. 数据存于本机 localStorage，清理浏览器缓存会丢失，务必定期导出。</div></div>';
+     '4. v43 起：在线写入/实时查询均需账号登录（8 小时有效），受限账号只能录新增、不能改删；每次写入服务端留痕。<br>'+
+     '5. 数据存于本机 localStorage，清理浏览器缓存会丢失，务必定期导出。</div></div>';
   return h;
 }
 
@@ -2222,8 +2240,11 @@ var KD_PMAP={dir:'dir',date:'date',pid:'pid',product:'product',wh:'wh',qty:'qty'
    其 webhook 触发器的参数只能走「请求体 body」，且 body 仅支持 raw 整段文本，
    动作里取不到 pid/date/qty 这类结构化字段 —— 结果每次都建出「字段全空」的记录。
    故出厂默认改为「未开启」，改用本机 v91-crud server 通道（扫一键启动脚本生成的二维码即可配置）。 */
-var V9IO_BUILTIN_URL='https://explained-reseller-agents-burke.trycloudflare.com';
-var V9IO_BUILTIN_TOKEN='O_QEhm8ZJDSCkdCeIKXaJWqTdUnPAA_X';
+/* v43 安全收口：出厂内置令牌【已撤销】——此前内置的管理员级地址+令牌暴露在网页源码里，
+   任何人拿到链接即可 F12 抄走直写 V9.1。现在一律走「账号登录」（server.py /api/login → Bearer 会话），
+   或主人手动填 / 改的通道密钥。未登录 = 只能看公开静态数据，不能写。 */
+var V9IO_BUILTIN_URL='';
+var V9IO_BUILTIN_TOKEN='';
 function getV9ioWebhook(){
   var noCfg={mode:'',url:'',token:'',pmap:null};
   try{
@@ -2231,17 +2252,22 @@ function getV9ioWebhook(){
     if((m.v9ioWhMode||'')==='off') return noCfg;                   /* 用户主动清除 → 关闭 */
     var url=(m.v9ioWebhookUrl||'').trim();
     var tok=m.v9ioWebhookToken||'';
-    /* 出厂内置通道优先：除非用户「手动填/改」明确覆盖了【地址+token 且≠内置】才用用户的（重启换地址场景） */
-    if(V9IO_BUILTIN_URL){
-      var manual=(m.v9ioWhManual==='1') && url && tok && url!==V9IO_BUILTIN_URL;
-      if(!manual){ return {mode:'server',url:V9IO_BUILTIN_URL,token:V9IO_BUILTIN_TOKEN,pmap:null}; }
-      return {mode:'server',url:url,token:tok,pmap:m.v9ioWhPmap||null};
-    }
-    /* 无内置地址时退回老配置（向后兼容） */
+    /* 无内置地址（v43 起）→ 直接用用户「手动填/改 / 扫码」配置的地址与密钥 */
     var mode=m.v9ioWhMode||(url?'server':'');
     if(!mode && !url) return noCfg;
     return {mode:mode,url:url,token:tok,pmap:m.v9ioWhPmap||null};
-  }catch(e){return V9IO_BUILTIN_URL?{mode:'server',url:V9IO_BUILTIN_URL,token:V9IO_BUILTIN_TOKEN,pmap:null}:noCfg;}
+  }catch(e){return {mode:'',url:'',token:'',pmap:null};}
+}
+/* v43：统一在线请求鉴权头 —— 优先「账号登录会话」（Bearer），兼容旧手动配置的通道密钥。
+   设计：出厂令牌已撤销，写操作/实时查询必须带身份；未登录时会话为空 → 服务端 401，UI 引导登录。 */
+function _ioAuthHeaders(withJson){
+  var h = {};
+  if(withJson) h['Content-Type']='application/json';
+  var s=getSess();
+  if(s && s.stok){ h['Authorization']='Bearer '+s.stok; return h; }
+  var w=getV9ioWebhook();
+  if(w && w.token){ h['X-Webhook-Token']=w.token; }
+  return h;
 }
 function setV9ioWebhook(mode,url,token,pmap){
   var m=getMeta();
@@ -2265,7 +2291,7 @@ function v9ioFetchLive(opts){
   var body = {from:opts.from||'', to:opts.to||'', dir:opts.dir||'', wh:(opts.wh==='全部'?'':opts.wh)||'', limit:2000};
   state.v9ioLiveLoading=true;
   var url = (w.url||'').replace(/\/$/,'')+'/api/io-query';
-  return fetch(url,{method:'POST', headers:{'Content-Type':'application/json','X-Webhook-Token':w.token||''}, body:JSON.stringify(body)})
+  return fetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify(body)})
     .then(function(r){return r.json()})
     .then(function(j){
       if(!j || !j.ok) throw new Error((j&&j.error)||'io-query 返回失败');
@@ -2279,6 +2305,7 @@ function v9ioFetchLive(opts){
     .catch(function(e){
       state.v9ioLiveLoading=false;
       state.v9ioLiveErr = (e&&e.message)||String(e);
+      if(state.v9ioLiveErr==='unauthorized') state.v9ioLiveErr='未登录或会话过期：请退出后用账号重新登录（主人：张辉 · 同事：各自账号）';
       console.warn('[v9ioFetchLive] 失败:', state.v9ioLiveErr);
       /* 不抛：UI 会显示 fallback + 错误提示，不影响主流程 */
     });
@@ -2290,7 +2317,7 @@ function learnLoad(){
   try{ if(state.tab==='idea') render(); }catch(_e){}
   if(!w.url){ state.learnErr='未配置学习通道'; state.learnLoading=false; try{if(state.tab==='idea')render();}catch(_e){} return Promise.resolve(); }
   var url=(w.url||'').replace(/\/$/,'')+'/api/learning/today?days=30';
-  return fetch(url,{method:'GET', headers:{'X-Webhook-Token':w.token||''}})
+  return fetch(url,{method:'GET', headers:_ioAuthHeaders(false)})
     .then(function(r){return r.json()})
     .then(function(j){
       if(!j || !j.ok) throw new Error((j&&j.error)||'learning/today 返回失败');
@@ -2424,7 +2451,7 @@ function v9ioPushSheet(sheet, webhook){
   var t=setTimeout(function(){ctrl.abort()}, 8000);
   return fetch(webhook.url.replace(/\/$/,'')+'/api/io-write',{
     method:'POST',signal:ctrl.signal,
-    headers:{'Content-Type':'application/json','X-Webhook-Token':webhook.token||''},
+    headers:_ioAuthHeaders(true),
     body:JSON.stringify(body)
   }).then(function(res){
     clearTimeout(t);
@@ -4357,7 +4384,7 @@ async function v9DlXlsx(){
   var wh=getV9ioWebhook();
   if(!wh||!wh.url){ toast('请先在「数据 & 设置」配置 V9.1 直写通道'); return; }
   toast('正在拉取 V9.1 多维表格原始数据…');
-  var base=wh.url.replace(/\/+$/,''), H={'X-Webhook-Token':wh.token||''};
+  var base=wh.url.replace(/\/+$/,''), H=_ioAuthHeaders(false);
   var fetchRaw=function(sid){
     return fetch(base+'/api/v91/raw?sid='+sid,{headers:H,cache:'no-store'}).then(function(r){
       if(!r.ok) throw new Error('sheet '+sid+' HTTP '+r.status);
@@ -4417,7 +4444,7 @@ async function v9DlInv(){
   toast('正在拉取合同详情用于仓库盘点…');
   var s2;
   try{
-    var r=await fetch(wh.url.replace(/\/+$/,'')+'/api/v91/raw?sid=2',{headers:{'X-Webhook-Token':wh.token||''},cache:'no-store'});
+    var r=await fetch(wh.url.replace(/\/+$/,'')+'/api/v91/raw?sid=2',{headers:_ioAuthHeaders(false),cache:'no-store'});
     if(!r.ok) throw new Error('HTTP '+r.status);
     s2=await r.json();
   }catch(e){ toast('拉取失败：'+(e&&e.message||'')+' · 请检查 V9.1 直写通道是否可达'); return; }
@@ -4837,7 +4864,7 @@ document.addEventListener('click',function(e){
     }
     var ctrl=new AbortController();
     var t=setTimeout(function(){ctrl.abort()},6000);
-    fetch(wh1.url.replace(/\/+$/,'')+'/api/health',{signal:ctrl.signal,headers:{'X-Webhook-Token':wh1.token||''}})
+    fetch(wh1.url.replace(/\/+$/,'')+'/api/health',{signal:ctrl.signal,headers:_ioAuthHeaders(false)})
       .then(function(r){clearTimeout(t);return r.json().then(function(j){return {ok:r.ok,body:j};})})
       .then(function(rs){
         if(rs.ok&&rs.body&&rs.body.ok) toast('✅ 连通 · 服务时间 '+rs.body.ts);
@@ -5223,13 +5250,37 @@ document.addEventListener('click',function(e){
   if(act==='doLogin'){
     var u=val('lgUser'), p=val('lgPwd');
     if(!u||!p){toast('请输入账号和密码');return}
-    var us=getUsers(), m=null;
-    us.forEach(function(x){if(x.u===u && x.p===p) m=x});
-    if(!m){toast('账号或密码错误');return}
-    setSess({u:m.u,role:m.role,name:m.name||m.u});
-    toast('登录成功：'+(m.name||m.u));
-    state.tab='home';
-    render(); return;
+    /* v43：登录页的服务器地址有改动则先保存（首次/隧道换地址场景；重绘不影响已读取的 u/p） */
+    try{
+      var _lgUrl=(val('lgUrl')||'').trim();
+      var _oldUrl=((getMeta().v9ioWebhookUrl)||'').trim();
+      if(_lgUrl && _lgUrl!==_oldUrl){ setV9ioWebhook('server',_lgUrl,''); }
+    }catch(_e){}
+    var us=getUsers(), lu=null;
+    us.forEach(function(x){if(x.u===u && x.p===p) lu=x});
+    var w=getV9ioWebhook();
+    function _ok(sess){ setSess(sess); toast('登录成功：'+(sess.name||sess.u)); state.tab='home'; render(); }
+    function _local(){
+      if(lu){ _ok({u:lu.u,role:lu.role,name:lu.name||lu.u,src:'local'}); }
+      else { toast(w.url?'服务端未连接或账号错误，且本机无此账号':'未配置服务器地址，且本机无此账号'); }
+    }
+    if(w && w.url){
+      /* v43：服务端在线 → 以 auth.json 为权威（同事账号在此校验，角色由服务端决定） */
+      fetch(w.url.replace(/\/+$/,'')+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,pass:p})})
+        .then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,body:j};});})
+        .then(function(res){
+          if(!res.ok){
+            /* 服务端明确拒绝：本地有同名账号则降级本地（离线浏览），否则报错 */
+            if(lu){ _ok({u:lu.u,role:lu.role,name:lu.name||lu.u,src:'local'}); toast('服务端无此账号，已用本机账号进入（离线只读模式）'); }
+            else { toast((res.body&&res.body.error)||'账号或密码错误'); }
+            return;
+          }
+          var b=res.body;
+          _ok({u:b.user||u, role:b.role||'user', name:(lu&&lu.name)?lu.name:b.user, stok:b.token, exp:Date.now()+8*3600000, src:'server'});
+        })
+        .catch(function(){ _local(); });
+    } else { _local(); }
+    return;
   }
   if(act==='logout'){
     clearSess(); state.tab='home';
@@ -5271,7 +5322,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v42.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v43.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
