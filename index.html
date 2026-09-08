@@ -2004,6 +2004,75 @@ function pageIo(){
 }
 
 /* ================= 页面：我的 ================= */
+/* ================= v46：操作日志（仅主账号） =================
+   数据源：服务端 audit.log（所有写操作留痕：时间/IP/账号/动作/详情/结果）。
+   接口 GET /api/audit?limit=&user=&action=&q= —— 服务端已限定仅 admin（user 403、匿名 401）。 */
+var AUDIT_ACT_CN={'record.create':'新建记录','record.update':'修改记录','record.delete':'删除记录',
+  'io-write':'写入出入库','io.write':'写入出入库','sync':'同步数据','refresh-schema':'刷新表结构',
+  'account.create':'新建账号','account.update':'改账号','account.delete':'删除账号','login':'登录','login.fail':'登录失败'};
+function auditActCN(a){ return AUDIT_ACT_CN[a]||a||'-'; }
+function auditIsOk(r){
+  var s=String(r||'');
+  if(/^ok$/i.test(s.trim())) return true;
+  if(/'code':\s*0|"code":\s*0/.test(s)) return true;
+  if(/成功|success/i.test(s)) return true;
+  return false;
+}
+function auditLoad(){
+  var w=getV9ioWebhook();
+  state.audit=state.audit||{};
+  if(!w || !w.url){ state.audit={loading:false,err:'服务器地址未配置',items:[],total:0}; if(state.tab==='audit')render(); return; }
+  state.audit.loading=true; state.audit.err='';
+  var q='?limit=300';
+  if(state.auditQ) q+='&q='+encodeURIComponent(state.auditQ);
+  fetch(w.url.replace(/\/+$/,'')+'/api/audit'+q,{headers:_ioAuthHeaders(false),cache:'no-store'})
+    .then(function(r){ if(_ioIs401(r)){ _ioExpired(); return null; } return r.json().then(function(j){return {st:r.status,body:j};}); })
+    .then(function(res){
+      if(!res) return;
+      if(res.st===403){ state.audit={loading:false,err:'仅主账号可查看操作日志',items:[],total:0}; if(state.tab==='audit')render(); return; }
+      var b=res.body||{};
+      state.audit={loading:false,err:b.ok?'':'读取失败',items:b.items||[],total:b.total||0,at:Date.now()};
+      if(state.tab==='audit') render();
+    })
+    .catch(function(e){ state.audit={loading:false,err:'读不到日志：'+(e&&e.message||e),items:[],total:0}; if(state.tab==='audit')render(); });
+}
+function pageAudit(){
+  var a=state.audit||{};
+  var s=getSess();
+  if(!(s&&s.role==='admin')){
+    return '<div class="card"><div class="card-h"><h3>操作日志</h3></div>'+
+      '<p class="srcline">仅主账号可查看。当前账号无权限。</p>'+
+      '<div class="btn-row"><button class="btn sm" data-act="goMe">返回我的</button></div></div>';
+  }
+  var h='<div class="card"><div class="card-h"><h3>'+ic('doc','var(--violet)',16)+'操作日志</h3>'+
+    '<span class="srcline">谁在什么时候动了 V9.1 · 仅主账号可见</span></div>'+
+    '<div class="btn-row" style="margin-bottom:10px;flex-wrap:wrap;gap:8px">'+
+      '<input id="audQ" value="'+esc(state.auditQ||'')+'" placeholder="搜账号 / 动作 / 关键字" style="flex:1;min-width:160px;padding:8px 10px;border:1px solid var(--inp-b);border-radius:8px;background:var(--card);color:var(--t1);font-size:16px">'+
+      '<button class="btn sm p" data-act="auditSearch">搜索</button>'+
+      '<button class="btn sm" data-act="auditReload">刷新</button>'+
+      '<button class="btn sm" data-act="goMe" style="margin-left:auto">返回我的</button>'+
+    '</div>'+
+    '<p class="srcline">共 '+(a.total||0)+' 条'+(a.at?(' · 更新于 '+new Date(a.at).toLocaleTimeString()):'')+'（最多显示 300 条）</p></div>';
+  if(a.loading) h+='<div class="card"><p class="srcline">正在读取…</p></div>';
+  else if(a.err) h+='<div class="card tint-r"><p class="srcline" style="color:var(--red-t)">⚠ '+esc(a.err)+'</p></div>';
+  else if(!(a.items||[]).length) h+='<div class="card"><p class="srcline">暂无操作记录。</p></div>';
+  else {
+    h+='<div class="card" style="padding:0"><table class="v9tbl"><thead><tr>'+
+       '<th style="width:130px">时间</th><th style="width:90px">账号</th><th style="width:110px">动作</th><th>详情 / 结果</th></tr></thead><tbody>'+
+      a.items.map(function(x){
+        var ok=auditIsOk(x.result);
+        return '<tr>'+
+          '<td style="font-size:12.5px;color:var(--t2);white-space:nowrap">'+esc(x.ts||'')+'</td>'+
+          '<td><b>'+esc(x.user||'')+'</b></td>'+
+          '<td>'+esc(auditActCN(x.action))+'</td>'+
+          '<td style="font-size:12.5px;line-height:1.7">'+
+            '<div>'+esc((x.detail||'').slice(0,120))+'</div>'+
+            '<div style="color:'+(ok?'var(--green-t)':'var(--red-t)')+';word-break:break-all">'+esc(String(x.result||'').slice(0,140))+'</div>'+
+          '</td></tr>';
+      }).join('')+'</tbody></table></div>';
+  }
+  return h;
+}
 function pageMe(){
   var m=getMeta();
   var h='';
@@ -2060,7 +2129,7 @@ function pageMe(){
 
      '<span style="color:var(--t3)">说明：金山「自动化流程 webhook 触发」方案已验证在 WPS 个人版不成立（参数只能走 body 且无法解析字段，'+
      '建出来的记录字段全空），故当前固定走本机 server 通道。</span></p></div>';
-  /* 账号管理（仅主账号可见） */
+/* 账号管理（仅主账号可见） */
   if(_sess && _sess.role==='admin'){
     var us=getUsers();
     h+='<div class="card"><div class="card-h"><h3>'+ic('user','var(--violet)',16)+'账号管理</h3>'+
@@ -2078,6 +2147,10 @@ function pageMe(){
        '<div class="btn-row" style="margin-top:12px"><button class="btn p sm" data-act="userAdd">'+ic('plus','#fff',14)+'新增账号</button>'+
        '<button class="btn sm" data-act="logout" style="margin-left:auto">↪ 退出登录</button></div>'+
        '<p class="srcline" style="margin-top:8px">主账号凭据：zhanghui / huige789（默认，请改密码）</p></div>';
+    h+='<div class="card"><div class="card-h"><h3>'+ic('doc','var(--violet)',16)+'操作日志</h3>'+
+       '<span class="srcline">谁在什么时候动了 V9.1</span></div>'+
+       '<p class="srcline" style="margin-bottom:10px">查看所有账号的写入 / 修改 / 删除 / 同步记录（时间、IP、动作、结果）。仅主账号可见。</p>'+
+       '<div class="btn-row"><button class="btn sm p" data-act="openAudit">查看操作日志</button></div></div>';
   } else {
     h+='<div class="btn-row" style="margin-bottom:16px"><button class="btn sm" data-act="logout">↪ 退出登录</button></div>';
   }
@@ -2128,7 +2201,7 @@ function render(){
   var f=_ext?function(){
     if(_ext.hub) return pageExtHub(_ext.hub);
     return pageExt(_ext.url,_ext.ni);
-  }:({home:pageHome,todo:pageTodo,idea:pageLearn,io:pageIo,v9:pageV9,me:pageMe}[state.tab]);
+  }:({home:pageHome,todo:pageTodo,idea:pageLearn,io:pageIo,v9:pageV9,me:pageMe,audit:pageAudit}[state.tab]);
   v.innerHTML='<div class="page">'+f()+'</div>';
   renderNav();
   var sub=document.getElementById('tbSub');
@@ -5389,6 +5462,15 @@ document.addEventListener('click',function(e){
     }
     return;
   }
+  /* --- v46：操作日志（仅主账号） --- */
+  if(act==='openAudit'){
+    var _s=getSess();
+    if(!(_s&&_s.role==='admin')){ toast('仅主账号可查看操作日志'); return; }
+    state.tab='audit'; state.auditQ=''; render(); auditLoad(); return;
+  }
+  if(act==='auditReload'){ auditLoad(); return; }
+  if(act==='auditSearch'){ state.auditQ=(val('audQ')||'').trim(); auditLoad(); return; }
+  if(act==='goMe'){ state.tab='me'; render(); return; }
   if(act==='logout'){
     clearSess(); state.tab='home';
     toast('已退出'); render(); return;
@@ -5429,7 +5511,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v45.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v46.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
