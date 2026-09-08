@@ -848,7 +848,7 @@ function _themeHandle(file){
 }
 /* 登录页：未登录时全屏遮罩式登录卡 */
 function pageLogin(){
-  var _lgurl=((getMeta&&getMeta().v9ioWebhookUrl)||'').trim();
+  var _lgurl=((getMeta&&getMeta().v9ioWebhookUrl)||'').trim() || (typeof V9IO_BUILTIN_URL!=='undefined'?V9IO_BUILTIN_URL:'');
   return '<div style="max-width:360px;margin:6vh auto 0;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:30px 26px;box-shadow:var(--sh)">'+
     '<div style="text-align:center;margin-bottom:22px">'+
       '<div style="width:66px;height:66px;border-radius:18px;background:var(--ac-g);color:#fff;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:32px">🧩</div>'+
@@ -858,10 +858,30 @@ function pageLogin(){
     '<div class="form-row"><label class="fl">账号</label><input type="text" id="lgUser" placeholder="主人：张辉 · 同事：各自账号" autocomplete="username"></div>'+
     '<div class="form-row"><label class="fl">密码</label><input type="password" id="lgPwd" placeholder="请输入密码" autocomplete="current-password"></div>'+
     '<div class="form-row"><label class="fl">服务器地址 <span style="color:var(--t3);font-weight:400">（隧道重启换地址才改，平时不用动）</span></label>'+
-    '<input type="text" id="lgUrl" value="'+esc(_lgurl)+'" placeholder="https://xxx.trycloudflare.com" autocomplete="off"></div>'+
+    '<div style="display:flex;gap:8px"><input type="text" id="lgUrl" value="'+esc(_lgurl)+'" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="flex:1">'+
+    '<button class="btn" data-act="testSrv" style="flex:0 0 auto;height:38px;padding:0 12px">测试</button></div></div>'+
+    '<div id="lgTip"></div>'+
     '<button class="btn p" data-act="doLogin" style="width:100%;height:38px;margin-top:8px">登 录</button>'+
     '<p class="srcline" style="margin-top:16px;text-align:center;line-height:1.7">主人用「张辉」，同事用各自账号（由主账号开通）<br>服务器在线时走服务端校验 · 离线回落本机账号</p>'+
   '</div>';
+}
+/* v44：登录页服务器地址自动体检 —— 隧道重启会换新域名，旧地址就再也连不上。
+   渲染登录页后异步探测内置地址；若本机存的地址 ≠ 内置且内置在线，给出一键切换提示。
+   探测失败静默处理（不影响登录）。 */
+function _srvAutoTip(){
+  try{
+    var el=document.getElementById('lgTip'); if(!el) return;
+    var cur=((getMeta().v9ioWebhookUrl)||'').trim();
+    var built=(typeof V9IO_BUILTIN_URL!=='undefined'?V9IO_BUILTIN_URL:'');
+    if(!built || !cur || cur===built) return;
+    fetch(built.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(!j || !j.ok) return;
+        el.innerHTML='<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--w1);color:var(--amber-t);font-size:13px;line-height:1.6">'+
+          '检测到服务器新地址可用（当前填的是旧地址）。<br><a href="javascript:;" data-act="useBuiltinSrv" style="color:var(--amber-t);font-weight:600;text-decoration:underline">点此切到新地址</a></div>';
+      }).catch(function(){});
+  }catch(e){}
 }
 /* 账号编辑表单（主账号增删改用） */
 function userForm(x){
@@ -964,8 +984,9 @@ function syncV9Now(){
   var base=wh.url.replace(/\/+$/,'');
   toast('正在从 V9.1 同步最新数据…');
   fetch(base+'/api/sync',{method:'POST',headers:_ioAuthHeaders(true)})
-    .then(function(r){return r.json().then(function(j){return {ok:r.ok, body:j};});})
+    .then(function(r){ if(_ioIs401(r)){ _ioExpired(); return null; } return r.json().then(function(j){return {ok:r.ok,status:r.status,body:j};}); })
     .then(function(res){
+      if(!res) return;
       if(!res.ok || !res.body || !res.body.ok){
         var _e403=((res.body&&res.body.error)||'');
         if(_e403.indexOf('仅管理员')>-1){ toast('⚠ 受限账号不能触发全局同步'); return; }
@@ -978,8 +999,9 @@ function syncV9Now(){
 function pollSync(base, n){
   if(n>40){ toast('⚠ 同步超时，请稍后重试'); refreshV9(); return; }
   fetch(base+'/api/sync-status',{method:'GET',headers:_ioAuthHeaders(false),cache:'no-store'})
-    .then(function(r){return r.json();})
+    .then(function(r){ if(_ioIs401(r)){ _ioExpired(); return null; } return r.json(); })
     .then(function(st){
+      if(!st) return;
       if(st.running){ setTimeout(function(){ pollSync(base, n+1); }, 2500); return; }
       if(st.error){ toast('⚠ 同步失败：'+(st.error||'').slice(0,80)); refreshV9(); return; }
       if(st.data){ applyV9(st.data, 'live'); toast('✅ 已同步最新数据（生成于 '+st.generated_at+'）'); }
@@ -2065,6 +2087,7 @@ function render(){
     var _navM=document.getElementById('navM'); if(_navM)_navM.innerHTML='';
     document.body.classList.add('logged-out');
     v.innerHTML='<div class="page login-page">'+pageLogin()+'</div>';
+    try{ setTimeout(_srvAutoTip, 60); }catch(e){}
     return;
   }
   document.body.classList.remove('logged-out');
@@ -2242,8 +2265,11 @@ var KD_PMAP={dir:'dir',date:'date',pid:'pid',product:'product',wh:'wh',qty:'qty'
    故出厂默认改为「未开启」，改用本机 v91-crud server 通道（扫一键启动脚本生成的二维码即可配置）。 */
 /* v43 安全收口：出厂内置令牌【已撤销】——此前内置的管理员级地址+令牌暴露在网页源码里，
    任何人拿到链接即可 F12 抄走直写 V9.1。现在一律走「账号登录」（server.py /api/login → Bearer 会话），
-   或主人手动填 / 改的通道密钥。未登录 = 只能看公开静态数据，不能写。 */
-var V9IO_BUILTIN_URL='';
+   或主人手动填 / 改的通道密钥。未登录 = 只能看公开静态数据，不能写。
+   v44：令牌仍然撤销（网页 0 钥匙），但【地址】恢复内置 —— 否则登录页地址为空会直接报
+   「未配置服务器地址」导致谁都登不进去。只有地址没有令牌是安全的：无会话/无令牌时
+   服务端对 /api/v91/raw、/api/sync、写接口一律 401（实测已验证）。 */
+var V9IO_BUILTIN_URL='https://explained-reseller-agents-burke.trycloudflare.com';
 var V9IO_BUILTIN_TOKEN='';
 function getV9ioWebhook(){
   var noCfg={mode:'',url:'',token:'',pmap:null};
@@ -2252,7 +2278,8 @@ function getV9ioWebhook(){
     if((m.v9ioWhMode||'')==='off') return noCfg;                   /* 用户主动清除 → 关闭 */
     var url=(m.v9ioWebhookUrl||'').trim();
     var tok=m.v9ioWebhookToken||'';
-    /* 无内置地址（v43 起）→ 直接用用户「手动填/改 / 扫码」配置的地址与密钥 */
+    /* v44：无用户配置 → 回落内置地址（仅地址，无令牌），保证登录/查询开箱可用 */
+    if(!url && V9IO_BUILTIN_URL) url=V9IO_BUILTIN_URL;
     var mode=m.v9ioWhMode||(url?'server':'');
     if(!mode && !url) return noCfg;
     return {mode:mode,url:url,token:tok,pmap:m.v9ioWhPmap||null};
@@ -2268,6 +2295,14 @@ function _ioAuthHeaders(withJson){
   var w=getV9ioWebhook();
   if(w && w.token){ h['X-Webhook-Token']=w.token; }
   return h;
+}
+/* v44：会话过期（8h 到期 / 服务端重启）→ 统一清会话并回登录页，避免"点了没反应"。
+   所有在线接口的响应进这里过一遍，401 即视为需要重新登录。 */
+function _ioIs401(r){ return !!(r && r.status===401); }
+function _ioExpired(){
+  try{ clearSess(); state.tab='home'; render(); }catch(e){}
+  try{ toast('登录已过期或被服务端拒绝，请重新登录'); }catch(e){}
+  return true;
 }
 function setV9ioWebhook(mode,url,token,pmap){
   var m=getMeta();
@@ -2292,8 +2327,9 @@ function v9ioFetchLive(opts){
   state.v9ioLiveLoading=true;
   var url = (w.url||'').replace(/\/$/,'')+'/api/io-query';
   return fetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify(body)})
-    .then(function(r){return r.json()})
+    .then(function(r){ if(_ioIs401(r)){ _ioExpired(); return null; } return r.json(); })
     .then(function(j){
+      if(!j) return;
       if(!j || !j.ok) throw new Error((j&&j.error)||'io-query 返回失败');
       state.v9ioLive = j.records||[];
       state.v9ioLiveAt = Date.now();
@@ -5247,6 +5283,22 @@ document.addEventListener('click',function(e){
     return;
   }
   /* --- 账号 & 登录 --- */
+  /* --- 服务器地址：测试连接 / 一键切到最新地址（v44） --- */
+  if(act==='testSrv'){
+    var _tu=(val('lgUrl')||'').trim();
+    if(!_tu){toast('请先填写服务器地址');return}
+    toast('正在测试连接…');
+    fetch(_tu.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
+      .then(function(r){return r.json();})
+      .then(function(j){ toast(j&&j.ok?'✅ 服务器在线，可以登录':'⚠ 服务器返回异常'); })
+      .catch(function(){ toast('❌ 连不上：地址不对，或电脑上的服务没开'); });
+    return;
+  }
+  if(act==='useBuiltinSrv'){
+    try{ setV9ioWebhook('server',(typeof V9IO_BUILTIN_URL!=='undefined'?V9IO_BUILTIN_URL:''),''); }catch(_e){}
+    toast('已切到最新服务器地址，请登录');
+    return;
+  }
   if(act==='doLogin'){
     var u=val('lgUser'), p=val('lgPwd');
     if(!u||!p){toast('请输入账号和密码');return}
@@ -5259,12 +5311,25 @@ document.addEventListener('click',function(e){
     var us=getUsers(), lu=null;
     us.forEach(function(x){if(x.u===u && x.p===p) lu=x});
     var w=getV9ioWebhook();
+    var _built=(typeof V9IO_BUILTIN_URL!=='undefined'?V9IO_BUILTIN_URL:'');
+    if(!(w && w.url)){ toast('未配置服务器地址：请在上方填 https 地址（或退出重进自动带出）'); return; }
     function _ok(sess){ setSess(sess); toast('登录成功：'+(sess.name||sess.u)); state.tab='home'; render(); }
     function _local(){
-      if(lu){ _ok({u:lu.u,role:lu.role,name:lu.name||lu.u,src:'local'}); }
-      else { toast(w.url?'服务端未连接或账号错误，且本机无此账号':'未配置服务器地址，且本机无此账号'); }
+      if(lu){ _ok({u:lu.u,role:lu.role,name:lu.name||lu.u,src:'local'}); toast('服务器连不上，已用本机账号进入（离线只读）'); }
+      else { toast('连不上服务器（地址错或电脑没开服务），且本机无此账号'); }
     }
-    if(w && w.url){
+    /* 连不上时：若内置地址还活着，自动切过去并提示重试（隧道换地址的常见场景） */
+    function _fallbackSwitch(){
+      if(_built && w.url && w.url!==_built){
+        fetch(_built.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
+          .then(function(r){return r.json();})
+          .then(function(j){
+            if(j && j.ok){ setV9ioWebhook('server',_built,''); toast('原地址已失效，已切到最新服务器地址，请重新点登录'); }
+            else { _local(); }
+          }).catch(function(){ _local(); });
+      } else { _local(); }
+    }
+    {
       /* v43：服务端在线 → 以 auth.json 为权威（同事账号在此校验，角色由服务端决定） */
       fetch(w.url.replace(/\/+$/,'')+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,pass:p})})
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,body:j};});})
@@ -5278,8 +5343,8 @@ document.addEventListener('click',function(e){
           var b=res.body;
           _ok({u:b.user||u, role:b.role||'user', name:(lu&&lu.name)?lu.name:b.user, stok:b.token, exp:Date.now()+8*3600000, src:'server'});
         })
-        .catch(function(){ _local(); });
-    } else { _local(); }
+        .catch(function(){ _fallbackSwitch(); });
+    }
     return;
   }
   if(act==='logout'){
@@ -5322,7 +5387,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v43.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v44.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
