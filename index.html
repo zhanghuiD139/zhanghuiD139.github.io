@@ -2560,7 +2560,7 @@ function v9ioPushKdocs(sheet,cfg){
   var kv={}; u.replace(/[?&]([^=]+)=([^&]*)/g,function(_,k,v){kv[decodeURIComponent(k)]=decodeURIComponent(v);return '';});
   delete kv._t;
   var ctrl=new AbortController();
-  var t=setTimeout(function(){ctrl.abort()},8000);
+  var t=setTimeout(function(){ctrl.abort()},30000);
   return fetch(u,{method:'GET',signal:ctrl.signal,cache:'no-store'})
     .then(function(res){clearTimeout(t);v9ioLogSent(u,kv,true,'fetch');return {ok:true,confirmed:true,status:res.status};})
     .catch(function(){
@@ -2588,8 +2588,9 @@ function v9ioPushSheet(sheet, webhook){
   var body={dir:dir,date:sheet.date,pid:sheet.pid,buy:sheet.buy||'',sale:sheet.sale||'',
     product:sheet.model||'',wh:sheet.wh||'',qty:+sheet.qty||0,
     unit_price:+sheet.price||0,amount:+sheet.amt||0,note:sheet.note||''};
+  /* v47：单条超时 8s → 30s（金山建记录含 sheet3+sheet30 两次调用，8s 在弱网下极易误判失败） */
   var ctrl=new AbortController();
-  var t=setTimeout(function(){ctrl.abort()}, 8000);
+  var t=setTimeout(function(){ctrl.abort()}, 30000);
   return fetch(webhook.url.replace(/\/$/,'')+'/api/io-write',{
     method:'POST',signal:ctrl.signal,
     headers:_ioAuthHeaders(true),
@@ -2605,14 +2606,69 @@ function v9ioPushSheet(sheet, webhook){
     return {ok:false,err:String(e&&e.message||e)};
   });
 }
-/* 批量推送 sheets（一条失败不阻塞其它），返回 Promise<{ok,succ[],fail[]}> */
+/* v47 批量写入：一次请求把整批交给服务端串行写（服务端 /api/io-write-batch）。
+   背景：原来 N 条 = N 次往返，每条 8s 超时，多产品行时极易整批失败（"有时写有时不写"）。
+   现在手机只等 1 个请求（超时 60s），服务端写金山（服务器间网络快且稳），可靠性大幅提升。
+   返回 {ok, succ:[sheet], fail:[{sheet,err}], usedBatch:bool} */
+function v9ioPushBatchServer(sheets, webhook){
+  var items=sheets.map(function(s){
+    return {dir:s.dir==='入'?'入':'出', date:s.date, pid:s.pid, buy:s.buy||'', sale:s.sale||'',
+            product:s.model||'', wh:s.wh||'', qty:+s.qty||0, unit_price:+s.price||0,
+            amount:+s.amt||0, note:s.note||''};
+  });
+  var ctrl=new AbortController();
+  var t=setTimeout(function(){ctrl.abort()}, 60000);
+  return fetch(webhook.url.replace(/\/$/,'')+'/api/io-write-batch',{
+    method:'POST', signal:ctrl.signal, headers:_ioAuthHeaders(true),
+    body:JSON.stringify({items:items})
+  }).then(function(res){
+    clearTimeout(t);
+    return res.json().then(function(j){return {st:res.status, body:j};});
+  }).then(function(r){
+    var b=r.body||{};
+    if(r.st===401){ _ioExpired(); return {ok:false, succ:[], fail:sheets.map(function(s){return {sheet:s, err:'登录已过期，请重新登录'};}), usedBatch:true}; }
+    /* 服务端不支持批量（旧版）→ 返回 null 让调用方回退逐条 */
+    if(r.st===404 || (r.st>=400 && /not found|404/i.test(String(b.error||'')))) return null;
+    if(r.st!==200) return {ok:false, succ:[], fail:sheets.map(function(s){return {sheet:s, err:(b.error||('HTTP '+r.st))};}), usedBatch:true};
+    var res=b.results||[], succ=[], fail=[];
+    res.forEach(function(x){
+      var s=sheets[x.idx];
+      if(!s) return;
+      if(x.ok) succ.push(s); else fail.push({sheet:s, err:x.err||'写入失败'});
+    });
+    return {ok:fail.length===0, succ:succ, fail:fail, usedBatch:true};
+  }).catch(function(e){
+    clearTimeout(t);
+    return {ok:false, succ:[], fail:sheets.map(function(s){return {sheet:s, err:String(e&&e.message||e)};}), usedBatch:true};
+  });
+}
+/* 批量推送 sheets（一条失败不阻塞其它），返回 Promise<{ok,succ[],fail[]}>
+   v47：server 模式优先走批量接口；批量不可用/失败 → 自动回退逐条（30s/条） */
 function v9ioPushBatch(sheets, webhook){
   var succ=[],succR=[],fail=[];
-  return sheets.reduce(function(p,s){
-    return p.then(function(){return v9ioPushSheet(s,webhook).then(function(r){
-      if(r.ok){succ.push(s);succR.push(r);} else fail.push({sheet:s,err:r.err});
-    })});
-  },Promise.resolve()).then(function(){return {ok:fail.length===0,succ:succ,succR:succR,fail:fail};});
+  if(webhook && webhook.mode==='server' && webhook.url && sheets.length>1){
+    return v9ioPushBatchServer(sheets, webhook).then(function(r){
+      if(r && r.usedBatch && r.succ.length) return {ok:(r.fail.length===0), succ:r.succ, succR:[], fail:r.fail, usedBatch:true};
+      if(r && r.usedBatch) return {ok:false, succ:[], succR:[], fail:r.fail, usedBatch:true};
+      return _pushOneByOne();
+    });
+  }
+  if(webhook && webhook.mode==='server' && webhook.url && sheets.length===1){
+    /* 单条也走批量接口（统一路径、统一判定），失败回退单条 */
+    return v9ioPushBatchServer(sheets, webhook).then(function(r){
+      if(r && r.usedBatch) return {ok:(r.fail.length===0), succ:r.succ, succR:[], fail:r.fail, usedBatch:true};
+      return _pushOneByOne();
+    });
+  }
+  return _pushOneByOne();
+  function _pushOneByOne(){
+    var s2=[],f2=[];
+    return sheets.reduce(function(p,s){
+      return p.then(function(){return v9ioPushSheet(s,webhook).then(function(r){
+        if(r.ok){s2.push(s);} else f2.push({sheet:s,err:r.err});
+      })});
+    },Promise.resolve()).then(function(){return {ok:f2.length===0,succ:s2,succR:[],fail:f2,usedBatch:false};});
+  }
 }
 function previewIoFormPid(){
   var y=document.getElementById('ioForm_yearSel');
@@ -3465,6 +3521,13 @@ function ionConfirmOk(){
   render();
   /* 3) 推送直写通道（模态保持打开，结果面板在模态内显示） */
   var _wr=getV9ioWebhook();
+  /* v47：写入前自检 —— 未登录 / 会话过期 / 离线身份会直接被服务端 401，先说清楚，避免白等一圈才报失败 */
+  var _s0=getSess();
+  if(_s0 && _s0.exp && Date.now()>_s0.exp){
+    toast('⚠ 登录已超过 8 小时，写入可能被拒。建议退出重登后再写');
+  } else if(_s0 && (_s0.src==='offline' || _s0.src==='local') && !_s0.stok){
+    toast('⚠ 当前是离线/本地身份，写入会被服务端拒绝 —— 数据会存待同步区，登录后重试即可');
+  }
   var _direct=!!(_wr.mode&&_wr.url&&sheets.length);
   if(_direct){
     _ionWrite(sheets, _wr, ts, sheets.length);
@@ -3481,7 +3544,7 @@ function _ionWrite(sheets, wr, ts, totalN, doneN){
     panel.innerHTML='<div style="padding:24px 16px;text-align:center;background:var(--w1);border:1.5px solid var(--ac-l);border-radius:14px">'
       +'<div style="font-size:26px">⏳</div>'
       +'<div style="font-size:16px;font-weight:800;color:#9A6B00;margin-top:6px">正在写入 V9.1 多维表格…</div>'
-      +'<div style="font-size:12.5px;color:var(--t3);margin-top:6px">本批 '+sheets.length+' 条'+(done?('（此前已成功 '+done+' 条）'):'')+'，请稍候，不要关闭本窗口</div>'
+      +'<div style="font-size:12.5px;color:var(--t3);margin-top:6px;line-height:1.7">本批 '+sheets.length+' 条'+(done?('（此前已成功 '+done+' 条）'):'')+'<br>'+(sheets.length>1?'已一次性提交给服务器逐条写入':'')+'，请稍候，<b>不要关闭本窗口</b></div>'
       +'</div>';
     panel.scrollIntoView({behavior:'smooth', block:'center'});
   }
@@ -3524,8 +3587,9 @@ function _ionWriteResult(rs, batchSheets, wr, ts, totalN, doneN){
       +'<div style="font-size:13px;color:var(--t3);margin-top:8px">'+(succN?('成功 '+succN+' 条 / 失败 '+failN+' 条'):'全部 '+failN+' 条写入失败')+'（本批共 '+totalN+' 条）</div>'
       +'<div style="font-size:12px;color:#C0392B;margin-top:8px;word-break:break-all;line-height:1.6">原因：'+esc(firstErr)+'</div>'
       +'<div style="font-size:12px;color:var(--t3);margin-top:8px;line-height:1.6">失败条目已保留在待同步区，JSON 已自动复制到剪贴板（兜底）</div>'
-      +'<div style="margin-top:18px;display:flex;gap:10px;justify-content:center">'
+      +'<div style="margin-top:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
       +'<button type="button" class="btn" data-act="ionCloseWrite" style="min-width:110px">关闭</button>'
+      +'<button type="button" class="btn" data-act="ionCopyFailJson" style="min-width:130px">复制 JSON</button>'
       +'<button type="button" class="btn p" data-act="ionRetryWrite" style="min-width:150px;font-weight:700">🔁 重试写入</button>'
       +'</div></div>';
   }
@@ -3536,8 +3600,23 @@ function _ionWriteResult(rs, batchSheets, wr, ts, totalN, doneN){
 function ionRetryWrite(){
   var r=state._ionRetry;
   if(!r||!r.sheets||!r.sheets.length){ toast('没有需要重试的条目'); return; }
-  var wr=r.wr&&r.wr.url?r.wr:getV9ioWebhook();
-  _ionWrite(r.sheets, wr, r.ts, r.totalN, r.done||0);
+  /* v47：重试一律用「当前最新」服务器地址（隧道可能已换新），不再沿用失败时的旧地址 */
+  var wr=getV9ioWebhook();
+  if(!wr || !wr.url){ toast('服务器地址未配置，请先登录或填地址'); return; }
+  var s=getSess();
+  if(s && (s.src==='offline' || s.src==='local') && !s.stok){ toast('当前是离线/本地身份，写入会被拒 —— 请退出用账号重新登录'); return; }
+  _ionWrite(r.sheets, wr, Date.now(), r.totalN, r.done||0);
+}
+/* v47：失败后手动再复制一次待同步 JSON（可粘给我走 MCP 补写） */
+function ionCopyFailJson(){
+  var r=state._ionRetry;
+  var sheets=(r&&r.sheets)||getV9ioPending();
+  if(!sheets||!sheets.length){ toast('没有待复制的数据'); return; }
+  try{
+    var p=_copyText(JSON.stringify(sheets,null,2));
+    if(p&&p.then) p.then(function(){toast('已复制 '+sheets.length+' 条 JSON');}).catch(function(){toast('复制失败，请手动选择');});
+    else toast('已复制 '+sheets.length+' 条 JSON');
+  }catch(e){ toast('复制失败：'+e.message); }
 }
 /* 关闭结果页：数据已入本地/待同步区；顺带重置预通知表单（下次打开为空表，不会误重复提交） */
 function ionCloseWrite(){
@@ -5154,6 +5233,7 @@ document.addEventListener('click',function(e){
   if(act==='ionConfirmOk'){ ionConfirmOk(); return; }
   if(act==='ionConfirmBack'){ ionConfirmBack(); return; }
   if(act==='ionRetryWrite'){ ionRetryWrite(); return; }
+  if(act==='ionCopyFailJson'){ ionCopyFailJson(); return; }
   if(act==='ionCloseWrite'){ ionCloseWrite(); return; }
   if(act==='ionCancel'){
     if(_ION_SAVED_RESTART_T){ clearTimeout(_ION_SAVED_RESTART_T); _ION_SAVED_RESTART_T=null; }
@@ -5511,7 +5591,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v46.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v47.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
