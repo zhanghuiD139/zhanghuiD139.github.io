@@ -2172,6 +2172,11 @@ function pageMe(){
      '3. 页面部署后公网可访问，请勿在页面里预填涉密或个人敏感信息。<br>'+
      '4. v43 起：在线写入/实时查询均需账号登录（8 小时有效），受限账号只能录新增、不能改删；每次写入服务端留痕。<br>'+
      '5. 数据存于本机 localStorage，清理浏览器缓存会丢失，务必定期导出。</div></div>';
+  h+='<div class="card"><div class="card-h"><h3>'+ic('shield','var(--sky)',16)+'版本与自检</h3></div>'+
+     '<div style="font-size:13.5px;font-weight:700;line-height:1.9">当前版本：<b style="color:var(--ac)">'+APP_VER+'</b></div>'+
+     '<p class="srcline" style="margin:6px 0 10px">写入 V9.1 有问题时，先点自检：会依次测试手机→服务器、服务器→金山、登录身份。</p>'+
+     '<div class="btn-row"><button class="btn sm" data-act="ionDiag2">🔍 测试服务器与登录</button></div>'+
+     '<div id="diagOut" style="font-size:12.5px;line-height:1.9;margin-top:10px;color:var(--t2)"></div></div>';
   return h;
 }
 
@@ -2389,6 +2394,24 @@ function getV9ioWebhook(){
     if(!mode && !url) return noCfg;
     return {mode:mode,url:url,token:tok,pmap:m.v9ioWhPmap||null};
   }catch(e){return {mode:'',url:'',token:'',pmap:null};}
+}
+/* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
+   手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
+   这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
+var APP_VER='v48';
+function _clog(tag,msg,ctx){
+  try{
+    var w=getV9ioWebhook();
+    if(!w||!w.url) return;
+    var s=getSess()||{};
+    var body={tag:tag,msg:msg,ctx:ctx||{},
+              v:APP_VER,url:w.url,mode:w.mode,
+              sess:{u:s.u||'',role:s.role||'',src:s.src||'',stok:s.stok?1:0,expired:(s.exp&&Date.now()>s.exp)?1:0},
+              ua:navigator.userAgent,online:(navigator.onLine?1:0),ts:Date.now()};
+    var ctrl=new AbortController(); var t=setTimeout(function(){ctrl.abort()},6000);
+    fetch(w.url.replace(/\/$/,'')+'/api/client-log',{method:'POST',signal:ctrl.signal,
+      headers:_ioAuthHeaders(true),body:JSON.stringify(body)}).then(function(){clearTimeout(t)}).catch(function(){clearTimeout(t)});
+  }catch(e){}
 }
 /* v43：统一在线请求鉴权头 —— 优先「账号登录会话」（Bearer），兼容旧手动配置的通道密钥。
    设计：出厂令牌已撤销，写操作/实时查询必须带身份；未登录时会话为空 → 服务端 401，UI 引导登录。 */
@@ -2626,6 +2649,7 @@ function v9ioPushBatchServer(sheets, webhook){
     return res.json().then(function(j){return {st:res.status, body:j};});
   }).then(function(r){
     var b=r.body||{};
+    try{ _clog('batch-resp','HTTP '+r.st+' succ='+(b.succ||0)+'/'+(b.total||items.length)+' '+(b.error||''),{st:r.st,body:String(JSON.stringify(b)).slice(0,1500),n:items.length}); }catch(_){}
     if(r.st===401){ _ioExpired(); return {ok:false, succ:[], fail:sheets.map(function(s){return {sheet:s, err:'登录已过期，请重新登录'};}), usedBatch:true}; }
     /* 服务端不支持批量（旧版）→ 返回 null 让调用方回退逐条 */
     if(r.st===404 || (r.st>=400 && /not found|404/i.test(String(b.error||'')))) return null;
@@ -2639,6 +2663,7 @@ function v9ioPushBatchServer(sheets, webhook){
     return {ok:fail.length===0, succ:succ, fail:fail, usedBatch:true};
   }).catch(function(e){
     clearTimeout(t);
+    try{ _clog('batch-ex',String(e&&e.message||e),{n:items.length,url:webhook.url}); }catch(_){}
     return {ok:false, succ:[], fail:sheets.map(function(s){return {sheet:s, err:String(e&&e.message||e)};}), usedBatch:true};
   });
 }
@@ -3529,6 +3554,8 @@ function ionConfirmOk(){
     toast('⚠ 当前是离线/本地身份，写入会被服务端拒绝 —— 数据会存待同步区，登录后重试即可');
   }
   var _direct=!!(_wr.mode&&_wr.url&&sheets.length);
+  try{ _clog('write-start','提交 '+sheets.length+' 条',{n:sheets.length,mode:_wr.mode,url:_wr.url,
+        pid:(sheets[0]&&sheets[0].pid)||'',dir:(sheets[0]&&sheets[0].dir)||'',direct:_direct?1:0}); }catch(_){}
   if(_direct){
     _ionWrite(sheets, _wr, ts, sheets.length);
   }else{
@@ -3570,6 +3597,8 @@ function _ionWriteResult(rs, batchSheets, wr, ts, totalN, doneN){
   if(!panel) return;
   var succN=rs.succ.length, failN=rs.fail.length;
   var h='';
+  try{ _clog('write-result',(rs.ok?'成功':'失败')+' '+succN+' 成功 / '+failN+' 失败 '+(rs.fail[0]&&rs.fail[0].err||''),
+        {ok:rs.ok?1:0,succ:succN,fail:failN,usedBatch:rs.usedBatch?1:0,total:totalN}); }catch(_){}
   if(rs.ok){
     state._ionRetry=null;
     h='<div style="padding:26px 16px;text-align:center;background:var(--green-s);border:1.5px solid var(--green);border-radius:14px">'
@@ -3590,11 +3619,60 @@ function _ionWriteResult(rs, batchSheets, wr, ts, totalN, doneN){
       +'<div style="margin-top:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
       +'<button type="button" class="btn" data-act="ionCloseWrite" style="min-width:110px">关闭</button>'
       +'<button type="button" class="btn" data-act="ionCopyFailJson" style="min-width:130px">复制 JSON</button>'
+      +'<button type="button" class="btn" data-act="ionDiag" style="min-width:120px">🔍 自检</button>'
       +'<button type="button" class="btn p" data-act="ionRetryWrite" style="min-width:150px;font-weight:700">🔁 重试写入</button>'
       +'</div></div>';
   }
   panel.innerHTML=h;
   panel.scrollIntoView({behavior:'smooth', block:'center'});
+}
+/* v48：写入自检 —— 一步步测「手机→服务器」「服务器→金山」「登录身份」，结果直接显示在面板上 */
+function ionDiag(tid){
+  var wr=getV9ioWebhook();
+  var panel=document.getElementById('ionConfirmPanel');
+  var tgt=tid?document.getElementById(tid):null;
+  if(!wr||!wr.url){ toast('未配置服务器地址，请先登录'); return; }
+  var s=getSess()||{};
+  var base=wr.url.replace(/\/$/,'');
+  var lines=['<b>版本</b> '+APP_VER,
+             '<b>地址</b> '+esc(wr.url),
+             '<b>账号</b> '+esc(s.u||'未登录')+' · '+(s.stok?'<b style="color:#1F7A41">会话有效</b>':'<b style="color:#C0392B">无会话（会被拒）</b>')];
+  function show(loading){
+    if(tgt){ tgt.innerHTML=lines.join('<br>'); return; }
+    if(!panel) return;
+    panel.innerHTML='<div style="padding:20px 14px;background:var(--w1);border:1.5px solid var(--ac-l);border-radius:14px">'
+      +'<div style="font-size:22px">🔍</div>'
+      +'<div style="font-size:15px;font-weight:800;margin-top:6px">自检结果</div>'
+      +'<div style="font-size:12.5px;color:var(--t3);margin-top:8px;line-height:1.9;text-align:left">'+lines.join('<br>')+'</div>'
+      +'<div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
+      +(loading?'<span style="font-size:12px;color:var(--t3)">测试中…</span>'
+              :'<button type="button" class="btn" data-act="ionCloseWrite" style="min-width:110px">关闭</button>'
+               +'<button type="button" class="btn p" data-act="ionRetryWrite" style="min-width:150px">🔁 重试写入</button>')
+      +'</div></div>';
+  }
+  if(tgt) tgt.innerHTML='⏳ 测试中…'; else show(true);
+  var t0=Date.now();
+  fetch(base+'/api/health',{headers:_ioAuthHeaders(false)}).then(function(r){
+    lines.push((r.status===200?'✅':'❌')+' <b>手机→服务器</b> HTTP '+r.status+'（'+(Date.now()-t0)+'ms）');
+    return fetch(base+'/api/io-probe',{headers:_ioAuthHeaders(true)});
+  }).then(function(r2){
+    return r2.json().then(function(j){return {st:r2.status, j:j};});
+  }).then(function(o){
+    var j=o.j||{};
+    if(o.st===401) lines.push('❌ <b>登录身份</b>：服务端拒绝（401）—— 退出重新登录再写');
+    else if(o.st!==200) lines.push('❌ 自检接口 HTTP '+o.st+' '+esc(String(j.error||'')));
+    else{
+      var k=j.kdocs||{};
+      lines.push((k.ok?'✅':'❌')+' <b>服务器→金山</b>'+(k.ok?'正常':'异常 '+esc(k.err||''))+'（'+(k.ms||0)+'ms）');
+      lines.push((j.me&&j.me.user?'✅':'❌')+' <b>服务端身份</b>：'+esc((j.me&&j.me.user)||'未识别')+' / '+esc((j.me&&j.me.role)||'-'));
+    }
+    try{ _clog('diag',lines.join(' | '),{st:o.st,j:j}); }catch(_){}
+    show(false);
+  }).catch(function(e){
+    lines.push('❌ <b>自检失败</b>：'+esc(String(e&&e.message||e))+'（多为手机连不上服务器）');
+    try{ _clog('diag-ex',String(e&&e.message||e),{}); }catch(_){}
+    show(false);
+  });
 }
 /* 重试写入：只重发上轮失败的条目 */
 function ionRetryWrite(){
@@ -5234,6 +5312,8 @@ document.addEventListener('click',function(e){
   if(act==='ionConfirmBack'){ ionConfirmBack(); return; }
   if(act==='ionRetryWrite'){ ionRetryWrite(); return; }
   if(act==='ionCopyFailJson'){ ionCopyFailJson(); return; }
+  if(act==='ionDiag'){ ionDiag(); return; }
+  if(act==='ionDiag2'){ ionDiag('diagOut'); return; }
   if(act==='ionCloseWrite'){ ionCloseWrite(); return; }
   if(act==='ionCancel'){
     if(_ION_SAVED_RESTART_T){ clearTimeout(_ION_SAVED_RESTART_T); _ION_SAVED_RESTART_T=null; }
@@ -5591,7 +5671,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v47.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v48.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
