@@ -2398,7 +2398,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v48';
+var APP_VER='v49';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -2663,8 +2663,32 @@ function v9ioPushBatchServer(sheets, webhook){
     return {ok:fail.length===0, succ:succ, fail:fail, usedBatch:true};
   }).catch(function(e){
     clearTimeout(t);
-    try{ _clog('batch-ex',String(e&&e.message||e),{n:items.length,url:webhook.url}); }catch(_){}
-    return {ok:false, succ:[], fail:sheets.map(function(s){return {sheet:s, err:String(e&&e.message||e)};}), usedBatch:true};
+    var msg=String(e&&e.message||e);
+    try{ _clog('batch-ex',msg,{n:items.length,url:webhook.url}); }catch(_){}
+    /* v48：手机端偶发 "Failed to fetch"（CF tunnel 连接复用导致服务端 close）。
+       用 no-store + cache buster 强制开新连接重试一次。*/
+    if(/Failed to fetch|TypeError|network/i.test(msg)){
+      return new Promise(function(rs){setTimeout(function(){
+        var ctrl2=new AbortController();
+        var t2=setTimeout(function(){ctrl2.abort()},60000);
+        var url2=webhook.url.replace(/\/$/,'')+'/api/io-write-batch?_='+Date.now();
+        fetch(url2,{method:'POST',signal:ctrl2.signal,headers:_ioAuthHeaders(true),
+          body:JSON.stringify({items:items}),cache:'no-store',keepalive:true})
+          .then(function(r){clearTimeout(t2);return r.json().then(function(j){return {st:r.status,body:j};});})
+          .then(function(r){
+            if(r.st===401){ _ioExpired(); return {ok:false,succ:[],fail:sheets.map(function(s){return {sheet:s,err:'登录已过期'};}),usedBatch:true}; }
+            if(r.st!==200) return {ok:false,succ:[],fail:sheets.map(function(s){return {sheet:s,err:(r.body&&r.body.error)||('HTTP '+r.st)};}),usedBatch:true};
+            var res=r.body.results||[],succ=[],fail=[];
+            res.forEach(function(x){var s=sheets[x.idx];if(!s)return;if(x.ok)succ.push(s);else fail.push({sheet:s,err:x.err||'写入失败'});});
+            return {ok:fail.length===0,succ:succ,fail:fail,usedBatch:true};
+          })
+          .catch(function(e2){
+            return {ok:false,succ:[],fail:sheets.map(function(s){return {sheet:s,err:String(e2&&e2.message||e2)};}),usedBatch:true};
+          })
+          .then(rs);
+      },350);});
+    }
+    return {ok:false, succ:[], fail:sheets.map(function(s){return {sheet:s, err:msg};}), usedBatch:true};
   });
 }
 /* 批量推送 sheets（一条失败不阻塞其它），返回 Promise<{ok,succ[],fail[]}>
@@ -3033,7 +3057,9 @@ function ioFormV9(t){
   +'</div>'
   +'</div>'
   /* 第二步：确认区 */
-  +'<div id="ioForm_confirm" style="display:none"></div>';
+  +'<div id="ioForm_confirm" style="display:none"></div>'
+  /* v48：写入结果弹窗容器（复用预通知那套 _ionWrite / _ionWriteResult） */
+  +'<div id="ionConfirmPanel"></div>';
 }
 
 
@@ -3654,7 +3680,9 @@ function ionDiag(tid){
   var t0=Date.now();
   fetch(base+'/api/health',{headers:_ioAuthHeaders(false)}).then(function(r){
     lines.push((r.status===200?'✅':'❌')+' <b>手机→服务器</b> HTTP '+r.status+'（'+(Date.now()-t0)+'ms）');
-    return fetch(base+'/api/io-probe',{headers:_ioAuthHeaders(true)});
+    /* v48：蒙广妹手机发现第一次 fetch 后立即第二次 fetch 报 "Failed to fetch"（CF tunnel 连接复用导致服务端 close）。
+       加 250ms 间隔强制浏览器开新连接。*/
+    return new Promise(function(rs){setTimeout(function(){rs(fetch(base+'/api/io-probe',{headers:_ioAuthHeaders(true)}))},250);});
   }).then(function(r2){
     return r2.json().then(function(j){return {st:r2.status, j:j};});
   }).then(function(o){
@@ -3696,7 +3724,8 @@ function ionCopyFailJson(){
     else toast('已复制 '+sheets.length+' 条 JSON');
   }catch(e){ toast('复制失败：'+e.message); }
 }
-/* 关闭结果页：数据已入本地/待同步区；顺带重置预通知表单（下次打开为空表，不会误重复提交） */
+/* 关闭结果页：数据已入本地/待同步区；顺带重置预通知表单（下次打开为空表，不会误重复提交）
+   v48：复用此函数同时处理「新增出入」流程——重置 rows + ioFormStep，并重置主按钮文本 */
 function ionCloseWrite(){
   state._ionRetry=null;
   try{ closeModal(); }catch(e){}
@@ -3704,8 +3733,15 @@ function ionCloseWrite(){
   if(panel) panel.innerHTML='';
   var btnSave=document.querySelector('[data-act="ionSave"]');
   if(btnSave) btnSave.style.display='';
-  _IO_NOTICE_ROWS=[_ionRowBlank()];
-  state._ionStep='form';
+  /* 预通知：重置为单行空表 */
+  try{ _IO_NOTICE_ROWS=[_ionRowBlank()]; state._ionStep='form'; }catch(_){}
+  /* 新增出入：重置多行 + 步骤 + 主按钮文本 */
+  try{
+    _IO_NEW_ROWS=[]; _IO_NEW_DIR='in';
+    state.ioFormStep='form'; state.ioFormDraft=null;
+    var ok=document.getElementById('mOk'); if(ok) ok.textContent='保存出入库';
+    var cc=document.getElementById('mCancel'); if(cc) cc.textContent='取消';
+  }catch(_){}
   render();
 }
 
@@ -4151,31 +4187,15 @@ function ioFormV9Save(){
       else   { toast('已保存 '+items.length+' 条出入库（自动复制失败，请手动复制顶部「待同步」卡片的 JSON）'); }
     });
   }
-  /* 3) 关掉 modal */
-  try{ closeModal(); }catch(e){}
+  /* 3) 不关 modal —— 改为在模态底部渲染 ionConfirmPanel，复用预通知那套结果弹窗
+        （v48：写入结果页 必须在模态内显示，不能只 toast 一下就关——辉哥 17:59 反馈） */
   render();
-  /* 4) 推送直写通道（V9.1 出入库 + 测算仓储费） */
+  /* 4) 推送直写通道：复用 _ionWrite → _ionWriteResult（带"录入成功/未成功"页 + 重试/关闭/自检/复制 JSON） */
   if(_direct){
-    v9ioPushBatch(sheets,_wr).then(function(rs){
-      if(rs.ok){
-        var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;});
-        setV9ioPending(remaining);
-        if(_wr.mode==='kdocs'){
-          var conf=(rs.succR||[]).filter(function(r){return r.confirmed!==false;}).length;
-          toast((conf?'✅ 已直写 V9.1 ':'📤 已触发 V9.1 ')+rs.succ.length+' 条（出入库 + 测算仓储费）\n'+
-                (conf?'':'跨域读不到响应属正常，')+'请到 V9.1 核对一下');
-        }else{
-          toast('✅ 已直写 V9.1 多维表格 '+rs.succ.length+' 条（sheet 3 + sheet 30）');
-        }
-      }else if(rs.succ.length){
-        var remaining=getV9ioPending().filter(function(p){return p.ts!==ts;}).concat(rs.fail.map(function(x){return x.sheet;}));
-        setV9ioPending(remaining);
-        toast('⚠️ 直写部分成功（'+rs.succ.length+'/'+sheets.length+'），'+rs.fail[0].err+'。剩余条目已保留在待同步区。');
-      }else{
-        toast('⚠️ 直写失败：'+rs.fail[0].err+'。\n已自动复制 JSON，去对话说「同步上面」');
-      }
-      render();
-    });
+    _ionWrite(sheets, _wr, ts, sheets.length);
+  }else{
+    /* 没有可用通道：直接给失败页（数据已本地 + 剪贴板） */
+    _ionWriteResult({ok:false,succ:[],fail:sheets.map(function(s){return {sheet:s,err:'未配置 V9.1 直写通道（数据已存待同步区，JSON 已复制到剪贴板）'};})}, sheets, null, ts, sheets.length);
   }
   return true;
 }
@@ -5671,7 +5691,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v48.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v49.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
