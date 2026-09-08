@@ -1864,10 +1864,16 @@ function renderDetailGroup(c, events, defaultOpen){
               '<span class="srcline" style="margin-left:auto">流水 '+blk.events.length+' 笔</span>'+
             '</div>'+
             whArr.map(function(wh){
+              /* v49：按合同币种决定主符号（USD 合同的 17.5 是美元不是人民币） */
+              var _ccy = (blk.events[0]&&blk.events[0].ccy)||'';
+              var _sym = _ccy==='USD' ? '$' : '¥';
+              var _subSym = _ccy==='USD' ? '¥' : '$';
+              var _avgCny = avgPrice? (_ccy==='USD' ? avgPrice*6.9 : avgPrice) : 0;
+              var _avgUsd = avgPrice? (_ccy==='USD' ? avgPrice : avgPrice/6.9) : 0;
               return '<div class="qd-metric">'+
                 '<div class="qd-mh">'+
                   _cell('仓库', esc(wh)) +
-                  _cell('单价', (avgPrice?'¥'+avgPrice.toFixed(2)+'<br><span class="qd-m-sub">$'+avgPriceUsd.toFixed(2)+'</span>':'<span style="color:var(--t3)">—</span>')) +
+                  _cell('单价', (avgPrice?_sym+avgPrice.toFixed(2)+'<br><span class="qd-m-sub">'+_subSym+((_ccy==='USD'?_avgUsd:_avgCny)).toFixed(2)+'</span>':'<span style="color:var(--t3)">—</span>')) +
                   _cell('库存', '<span class="qd-m-big" style="color:'+(stock<0?'var(--red)':(stock>0?'var(--green)':'var(--t3)'))+'">'+fmtRaw(stock)+'</span>'+_unit('个') + '<br><span class="qd-m-sub">合同 <b style="color:'+(contractQty?'var(--t1)':'var(--t3)')+'">'+(contractQty?fmtRaw(contractQty):'—')+'</b> 个</span>') +
                   _cell('流水', '<span style="color:var(--green)"><b>'+fmtRaw(inQty)+'</b> 个 入</span><br><span style="color:var(--red)"><b>'+fmtRaw(outQty)+'</b> 个 出</span>') +
                   _cell('金额', '<span style="color:var(--green)"><b>¥'+fmtRaw(inAmt)+'</b> 入</span><br><span style="color:var(--red)"><b>¥'+fmtRaw(outAmt)+'</b> 出</span>') +
@@ -1876,9 +1882,19 @@ function renderDetailGroup(c, events, defaultOpen){
             }).join('')+
             /* 明细表保持原样 */
             '<div class="tbl-scroll" style="margin-top:10px"><table class="v9tbl"><thead><tr><th>日期</th><th>方向</th><th>合同号</th><th>仓库</th><th class="num">数量（个）</th><th class="num">单价（元）</th><th class="num">金额（元）</th></tr></thead><tbody>'+
+            /* v49：按币种决定符号（USD 合同的 17.5 是美元不是人民币） */
             blk.events.slice().sort(function(a,b){return a.date<b.date?1:-1}).map(function(r){
               var dir=r.dir==='入'?'<span style="color:var(--green-t);font-weight:700">入</span>':'<span style="color:#E03A3F;font-weight:700">出</span>';
-              return '<tr><td>'+esc(r.date)+'</td><td>'+dir+'</td><td>'+esc(r.contract||'')+'</td><td>'+esc(r.wh||'-')+'</td><td class="num">'+fmtRaw(r.qty)+'</td><td class="num">'+(r.price?'¥'+r.price.toFixed(2):'—')+'</td><td class="num">¥'+fmtRaw(r.amt)+'</td></tr>';
+              var ccy = r.ccy||'';
+              var sym = ccy==='USD' ? '$' : '¥';
+              var subSym = ccy==='USD' ? '¥' : '$';
+              var subAmt = ccy==='USD' ? (r.amt_cny||0) : (r.amt_usd||0);
+              var subPrice = ccy==='USD' ? (r.price_cny||0) : (r.price_usd||0);
+              var amtHtml = '<b>'+sym+fmtRaw(r.amt||0)+'</b>';
+              if(subAmt){ amtHtml += '<div class="muted" style="font-size:11px;font-weight:400">'+subSym+fmtRaw(subAmt)+'</div>'; }
+              var priceHtml = r.price?(sym+(+r.price).toFixed(2)):'—';
+              if(subPrice){ priceHtml += '<div class="muted" style="font-size:11px;font-weight:400">'+subSym+(+subPrice).toFixed(2)+'</div>'; }
+              return '<tr><td>'+esc(r.date)+'</td><td>'+dir+'</td><td>'+esc(r.contract||'')+'</td><td>'+esc(r.wh||'-')+'</td><td class="num">'+fmtRaw(r.qty)+'</td><td class="num">'+priceHtml+'</td><td class="num">'+amtHtml+'</td></tr>';
             }).join('')+
             '</tbody></table></div>'+
           '</div>';
