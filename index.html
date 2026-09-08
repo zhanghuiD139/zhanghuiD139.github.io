@@ -642,6 +642,14 @@ function getSess(){try{return JSON.parse(localStorage.getItem(K_SESS)||'null')}c
 function setSess(u){try{localStorage.setItem(K_SESS,JSON.stringify(u))}catch(e){}}
 function clearSess(){try{localStorage.removeItem(K_SESS)}catch(e){}}
 function isAdmin(){var s=getSess();return !!(s&&s.role==='admin')}
+/* v45：离线兜底 —— 服务器（辉哥电脑）关机/隧道断了时，仍能「离线浏览」看静态数据。
+   记住上次在这台设备成功登录过的账号（只存账号名和显示名，不存密码），
+   断网时可用它进入只读模式；从未登录过的设备可点「离线浏览」以游客身份进入。
+   安全性：静态 data.v9.json 本来就公开可下载，离线只读不泄露任何额外信息。 */
+var K_LASTU='gzt_last_user';
+function getLastUser(){try{return JSON.parse(localStorage.getItem(K_LASTU)||'null')}catch(e){return null}}
+function setLastUser(u){try{localStorage.setItem(K_LASTU,JSON.stringify(u))}catch(e){}}
+function isOffline(){var s=getSess();return !!(s&&s.src==='offline')}
 /* ================= 主题设置（多巴胺配色 / 适配图片） ================= */
 var K_THEME='gzt_theme';
 var THEMES={
@@ -863,6 +871,7 @@ function pageLogin(){
     '<div id="lgTip"></div>'+
     '<button class="btn p" data-act="doLogin" style="width:100%;height:38px;margin-top:8px">登 录</button>'+
     '<p class="srcline" style="margin-top:16px;text-align:center;line-height:1.7">主人用「张辉」，同事用各自账号（由主账号开通）<br>服务器在线时走服务端校验 · 离线回落本机账号</p>'+
+    '<p class="srcline" style="margin-top:10px;text-align:center">服务器连不上（电脑关机）？<a href="javascript:;" data-act="loginOffline" style="color:var(--ac);font-weight:600;text-decoration:underline">离线浏览</a>（只看，不能写）</p>'+
   '</div>';
 }
 /* v44：登录页服务器地址自动体检 —— 隧道重启会换新域名，旧地址就再也连不上。
@@ -871,17 +880,36 @@ function pageLogin(){
 function _srvAutoTip(){
   try{
     var el=document.getElementById('lgTip'); if(!el) return;
-    var cur=((getMeta().v9ioWebhookUrl)||'').trim();
     var built=(typeof V9IO_BUILTIN_URL!=='undefined'?V9IO_BUILTIN_URL:'');
-    if(!built || !cur || cur===built) return;
+    var cur=((getMeta().v9ioWebhookUrl)||'').trim() || built;
+    if(!cur) return;
+    var ctrl=new AbortController(); var to=setTimeout(function(){try{ctrl.abort()}catch(e){}},5000);
+    fetch(cur.replace(/\/+$/,'')+'/api/health',{cache:'no-store',signal:ctrl.signal})
+      .then(function(r){clearTimeout(to);return r.json();})
+      .then(function(j){
+        if(j && j.ok){
+          el.innerHTML='<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--green-s);color:var(--green-t);font-size:13px">✅ 服务器在线，直接登录即可</div>';
+          return;
+        }
+        _srvDownTip(el, cur, built);
+      })
+      .catch(function(){ _srvDownTip(el, cur, built); });
+  }catch(e){}
+}
+/* 服务器连不上：明确告知 + 给「离线浏览」入口；若内置地址还活着，再给一键切换 */
+function _srvDownTip(el, cur, built){
+  el.innerHTML='<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--w1);color:var(--amber-t);font-size:13px;line-height:1.7">'+
+    '⚠ 服务器没连上（电脑关机 / 服务没开 / 地址变了）。<br>'+
+    '可以<a href="javascript:;" data-act="loginOffline" style="color:var(--amber-t);font-weight:600;text-decoration:underline">离线浏览</a>：看得到数据，但不能写、不能同步。</div>';
+  if(built && cur!==built){
     fetch(built.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
       .then(function(r){return r.json();})
       .then(function(j){
         if(!j || !j.ok) return;
-        el.innerHTML='<div style="margin-top:8px;padding:8px 10px;border-radius:8px;background:var(--w1);color:var(--amber-t);font-size:13px;line-height:1.6">'+
-          '检测到服务器新地址可用（当前填的是旧地址）。<br><a href="javascript:;" data-act="useBuiltinSrv" style="color:var(--amber-t);font-weight:600;text-decoration:underline">点此切到新地址</a></div>';
+        el.innerHTML+='<div style="margin-top:6px;padding:8px 10px;border-radius:8px;background:var(--w1);color:var(--amber-t);font-size:13px">检测到服务器新地址可用，'+
+          '<a href="javascript:;" data-act="useBuiltinSrv" style="color:var(--amber-t);font-weight:600;text-decoration:underline">点此切换</a>后再登录。</div>';
       }).catch(function(){});
-  }catch(e){}
+  }
 }
 /* 账号编辑表单（主账号增删改用） */
 function userForm(x){
@@ -978,6 +1006,7 @@ function applyV9(d, src){
    服务端不可用时回退到静态 data.v9.json 重新拉取（github.io）。 */
 function syncV9Now(){
   var wh=getV9ioWebhook();
+  if(isOffline()){ toast('离线浏览模式：不能同步，当前是部署时的静态数据'); return; }
   if(wh.mode!=='server' || !wh.url){
     toast('未配置直连通道，改为刷新缓存'); return refreshV9();
   }
@@ -2103,7 +2132,10 @@ function render(){
   v.innerHTML='<div class="page">'+f()+'</div>';
   renderNav();
   var sub=document.getElementById('tbSub');
-  if(sub){var c=todayCount();sub.textContent=c?('今天还有 '+c+' 件事没处理'):'今天的事都安排明白了'}
+  if(sub){
+    if(isOffline()){ sub.textContent='离线浏览中：服务器未连接，只能看，不能写/同步'; }
+    else { var c=todayCount(); sub.textContent=c?('今天还有 '+c+' 件事没处理'):'今天的事都安排明白了'; }
+  }
   if(_tabChanged) window.scrollTo(0,0);
   else window.scrollTo(0,_sy);
 }
@@ -5299,6 +5331,14 @@ document.addEventListener('click',function(e){
     toast('已切到最新服务器地址，请登录');
     return;
   }
+  /* v45：服务器关机/断网时的兜底入口 —— 只读浏览静态数据（不校验，因为静态数据本就公开） */
+  if(act==='loginOffline'){
+    var _lu=getLastUser();
+    setSess({u:(_lu&&_lu.u)||'guest', name:(_lu&&_lu.name)||'离线浏览', role:'user', src:'offline'});
+    toast('离线浏览：只看数据，不能写、不能同步（服务器连上后退出重登即可）');
+    state.tab='home'; render();
+    return;
+  }
   if(act==='doLogin'){
     var u=val('lgUser'), p=val('lgPwd');
     if(!u||!p){toast('请输入账号和密码');return}
@@ -5313,10 +5353,12 @@ document.addEventListener('click',function(e){
     var w=getV9ioWebhook();
     var _built=(typeof V9IO_BUILTIN_URL!=='undefined'?V9IO_BUILTIN_URL:'');
     if(!(w && w.url)){ toast('未配置服务器地址：请在上方填 https 地址（或退出重进自动带出）'); return; }
-    function _ok(sess){ setSess(sess); toast('登录成功：'+(sess.name||sess.u)); state.tab='home'; render(); }
+    function _ok(sess){ try{ if(sess.src!=='offline') setLastUser({u:sess.u,name:sess.name,role:sess.role}); }catch(e){} setSess(sess); toast('登录成功：'+(sess.name||sess.u)); state.tab='home'; render(); }
     function _local(){
+      var _last=getLastUser();
       if(lu){ _ok({u:lu.u,role:lu.role,name:lu.name||lu.u,src:'local'}); toast('服务器连不上，已用本机账号进入（离线只读）'); }
-      else { toast('连不上服务器（地址错或电脑没开服务），且本机无此账号'); }
+      else if(_last && _last.u===u){ _ok({u:u,role:_last.role||'user',name:_last.name||u,src:'offline'}); toast('服务器连不上，已用上次的账号离线进入（只读）'); }
+      else { toast('连不上服务器，且这台设备没存过「'+u+'」→ 点下方「离线浏览」可先看数据'); try{ _srvDownTip(document.getElementById('lgTip'), w.url, _built); }catch(_e){} }
     }
     /* 连不上时：若内置地址还活着，自动切过去并提示重试（隧道换地址的常见场景） */
     function _fallbackSwitch(){
@@ -5387,7 +5429,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v44.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v45.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
