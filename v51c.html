@@ -2406,7 +2406,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v52';
+var APP_VER='v51';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -3860,26 +3860,11 @@ function ionRenderCanvas(){
     var tx=cardX+92;
     var txt=String(v==null||v===''?'—':v);
     var maxW=cardW-92-10;
-    // v52：超宽自动换行（司机信息、备注等长文本不再被切掉）
     if(ctx.measureText(txt).width>maxW){
-      var lines=[];
-      var cur='';
-      for(var i=0;i<txt.length;i++){
-        var ch=txt[i];
-        var test=cur+ch;
-        if(ctx.measureText(test).width>maxW && cur.length>0){
-          lines.push(cur); cur=ch;
-        }else{ cur=test; }
-      }
-      if(cur) lines.push(cur);
-      ctx.fillText(lines[0], tx, y+6);
-      for(var li=1;li<lines.length;li++){
-        y+=18;
-        ctx.fillText(lines[li], tx, y+6);
-      }
-    }else{
-      ctx.fillText(txt, tx, y+6);
+      while(ctx.measureText(txt+'…').width>maxW && txt.length>0) txt=txt.slice(0,-1);
+      txt+='…';
     }
+    ctx.fillText(txt, tx, y+6);
     // 行底细线
     ctx.strokeStyle='#F0E5D0'; ctx.lineWidth=0.5;
     ctx.beginPath(); ctx.moveTo(cardX+8, y+14); ctx.lineTo(cardX+cardW-8, y+14); ctx.stroke();
@@ -5714,7 +5699,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v52.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v51.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
