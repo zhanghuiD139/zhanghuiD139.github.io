@@ -1018,18 +1018,19 @@ function applyV9(d, src){
 /* v56：实时同步 —— 一次请求直接从服务端拿最新数据（实测 ~4s），
    不再依赖「后台 job + 轮询 + git push + Pages CDN」那条长链路。
    服务端没有 /api/sync-now（老版本）时自动回退到旧的 /api/sync + 轮询。 */
-function syncV9Now(silent){
+function syncV9Now(silent, _noretry){
   var wh=getV9ioWebhook();
   if(isOffline()){ if(!silent) toast('离线浏览模式：不能同步，当前是部署时的静态数据'); return; }
   var base=((wh.url||'')||V9IO_BUILTIN_URL||'').replace(/\/+$/,'');
   if(!base){ if(!silent){ toast('未配置服务器地址，改为刷新缓存'); refreshV9(); } return; }
-  if(!silent) toast('正在从 V9.1 拉取最新数据…');
-  try{ _clog('sync-start', silent?'自动同步':'点击同步', {url:base}); }catch(e){}
+  if(!silent && !_noretry) toast('正在从 V9.1 拉取最新数据…');
+  try{ _clog('sync-start', silent?'自动同步':(_noretry?'自动重试':'点击同步'), {url:base}); }catch(e){}
   var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
   var t=setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, 120000);
-  var opt={method:'POST',headers:_ioAuthHeaders(true)};
+  /* v58：no-store + keepalive，重试时再加 cache buster 强制开新连接（CF tunnel 连接复用坑） */
+  var opt={method:'POST',headers:_ioAuthHeaders(true),cache:'no-store',keepalive:true};
   if(ctrl) opt.signal=ctrl.signal;
-  fetch(base+'/api/sync-now',opt).then(function(r){
+  fetch(base+'/api/sync-now'+(_noretry?'?_='+Date.now():''),opt).then(function(r){
     if(_ioIs401(r)){ _ioExpired(); return null; }
     return r.json().then(function(j){return {st:r.status,body:j};});
   }).then(function(res){
@@ -1047,6 +1048,13 @@ function syncV9Now(silent){
   }).catch(function(e){
     clearTimeout(t);
     var msg=String((e&&e.message)||e||'');
+    /* v58：CF tunnel 连接复用导致偶发 "Failed to fetch"（v49 在写入链路已踩过同一坑）。
+       网络类失败延迟 450ms 强制新连接自动重试一次，只重试一次防循环。 */
+    if(/Failed to fetch|TypeError|network/i.test(msg) && !_noretry){
+      try{ _clog('sync-retry','网络失败自动重试',{url:base}); }catch(_e){}
+      setTimeout(function(){ syncV9Now(silent, true); }, 450);
+      return;
+    }
     if(/abort/i.test(msg)) msg='超时（超过 120 秒）';
     try{ _clog('sync-fail', msg, {url:base}); }catch(_e){}
     if(!silent){ toast('⚠ 实时同步失败：'+msg.slice(0,60)+'｜已改为刷新缓存'); refreshV9(); }
@@ -1054,7 +1062,8 @@ function syncV9Now(silent){
 }
 /* 回退：老服务端的 /api/sync + 轮询（新服务端不会走到这里） */
 function syncV9Legacy(base, silent){
-  fetch(base+'/api/sync',{method:'POST',headers:_ioAuthHeaders(true)})
+  /* v58：同样加 no-store + cache buster 防连接复用坑 */
+  fetch(base+'/api/sync?_='+Date.now(),{method:'POST',headers:_ioAuthHeaders(true),cache:'no-store',keepalive:true})
     .then(function(r){ if(_ioIs401(r)){_ioExpired(); return null;} return r.json(); })
     .then(function(j){
       if(!j || !j.ok){ throw new Error((j&&j.error)||'sync start failed'); }
@@ -2507,7 +2516,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v57';
+var APP_VER='v58';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5885,7 +5894,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v57.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v58.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}

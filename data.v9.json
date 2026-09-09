@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-09 11:53",
+  "generated_at": "2026-09-09 14:19",
   "source": "V9.1 物管数据平台 · 金山文档 V9.1.dbt",
   "file_id": "ELFCsW2891MbaXXvTwfgrxXYUwP6h6tYF",
   "inventory": {
@@ -5005,7 +5005,7 @@
       {
         "pid": "LB-2026-040",
         "sale": "KY-LB-2026012902S",
-        "buy": "ZK-LB-2026012902G",
+        "buy": "B+G",
         "supplier": "苏州震坤科技有限公司",
         "customer": "浙江康盈半导体科技有限公司",
         "mode": "内贸",
@@ -11530,7 +11530,7 @@
       {
         "pid": "LB-2026-040",
         "sale": "KY-LB-2026012902S",
-        "buy": "B+G",
+        "buy": "ZK-LB-2026012902G",
         "supplier": "",
         "customer": "浙江康盈半导体科技有限公司",
         "mode": "内贸",
