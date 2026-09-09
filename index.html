@@ -2528,7 +2528,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v59';
+var APP_VER='v60';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -3655,9 +3655,9 @@ function ionCollect(){
   return {pid:pid,buy:buy,sale:sale,note:note,drv:drvText,customers:customers,rows:rows,dir:dir,items:ioItems,sheets:sheets,ts:ts};
 }
 
-/* 预通知：保存流程入口（第一步：校验 + 显示确认页）
-   仿 ioFormV9OnOk：第一次点「保存至新增出入库」→ 收集 + 渲染 ionConfirmPanel
-   真正写 sheet3 由 ionConfirmOk 完成（点确认写入按钮触发） */
+/* 预通知：保存 = 一步直写（v60：辉哥 9/9 要求——点「保存至新增出入库」后直接弹出
+   「录入成功/未成功」结果窗口，不再先出确认页等第二次点击。表单字段本身已校验，
+   写错可到 V9.1 / 出入库列表删除，结果窗口只有「关闭」与失败时「重试」。） */
 function ionOnOk(){
   if(state._ionStep==='confirm'){
     return ionConfirmOk();
@@ -3665,14 +3665,10 @@ function ionOnOk(){
   var d=ionCollect();
   if(!d) return;
   state._ionDraft=d;
-  ionShowConfirm(d);
-  state._ionStep='confirm';
-  /* 隐藏主按钮组，显示确认态按钮组 */
+  /* 防连点：写入完成前禁用保存按钮（避免重复入账） */
   var btnSave=document.querySelector('[data-act="ionSave"]');
-  if(btnSave) btnSave.style.display='none';
-  /* 关键提示：「已记录数据，请点底部'确认写入 V9.1 sheet3'」—— 解决「点了第一次以为写入成功」造成的"有时写有时没写"感知 bug */
-  toast('✅ 已记录 '+d.sheets.length+' 条预通知数据。\n请滚动到底部，点「确认写入 V9.1 sheet3」才真正入库');
-  return;
+  if(btnSave){ btnSave.disabled=true; btnSave.style.opacity=.55; }
+  return ionConfirmOk();
 }
 
 /* 预通知：渲染确认页（项目号 + 本表备注 + 产品明细 + 底部按钮） */
@@ -3775,18 +3771,33 @@ function ionConfirmOk(){
   }
   return true;
 }
+/* v60：写入结果全屏浮层 —— 盖在 modal 之上、页面居中的独立弹窗
+   辉哥 9/9 要求：「保存后弹出窗口显示 录入成功/未成功 + 重试/关闭按钮」。
+   旧版把结果嵌在长表单底部，手机上要滚动才看得到 → 误以为「没弹窗/没实现」。 */
+var _ioResWrap=null,_ioResCard=null;
+function _ionResEl(){
+  if(!_ioResWrap){
+    _ioResWrap=document.createElement('div');
+    _ioResWrap.style.cssText='position:fixed;inset:0;z-index:999;background:rgba(20,12,0,.42);display:flex;align-items:center;justify-content:center;padding:18px';
+    _ioResCard=document.createElement('div');
+    _ioResCard.style.cssText='background:var(--card);border-radius:16px;max-width:440px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 14px 44px rgba(0,0,0,.3)';
+    _ioResWrap.appendChild(_ioResCard);
+    (document.body||document.documentElement).appendChild(_ioResWrap);
+  }
+  _ioResWrap.style.display='flex';
+  return _ioResCard;
+}
+function _ionResHide(){ if(_ioResWrap) _ioResWrap.style.display='none'; }
 /* 写入执行：渲染写入中面板 → 批量推送 → 渲染结果面板（succeededN/totalN 跨轮累计） */
 function _ionWrite(sheets, wr, ts, totalN, doneN){
   var done=doneN||0;
-  var panel=document.getElementById('ionConfirmPanel');
-  if(panel){
-    panel.innerHTML='<div style="padding:24px 16px;text-align:center;background:var(--w1);border:1.5px solid var(--ac-l);border-radius:14px">'
-      +'<div style="font-size:26px">⏳</div>'
-      +'<div style="font-size:16px;font-weight:800;color:#9A6B00;margin-top:6px">正在写入 V9.1 多维表格…</div>'
-      +'<div style="font-size:12.5px;color:var(--t3);margin-top:6px;line-height:1.7">本批 '+sheets.length+' 条'+(done?('（此前已成功 '+done+' 条）'):'')+'<br>'+(sheets.length>1?'已一次性提交给服务器逐条写入':'')+'，请稍候，<b>不要关闭本窗口</b></div>'
-      +'</div>';
-    panel.scrollIntoView({behavior:'smooth', block:'center'});
-  }
+  /* v60：写入中同样显示在浮层弹窗里 */
+  var card=_ionResEl();
+  card.innerHTML='<div style="padding:26px 16px;text-align:center">'
+    +'<div style="font-size:30px">⏳</div>'
+    +'<div style="font-size:17px;font-weight:800;color:#9A6B00;margin-top:8px">正在写入 V9.1 多维表格…</div>'
+    +'<div style="font-size:13px;color:var(--t3);margin-top:8px;line-height:1.7">本批 '+sheets.length+' 条'+(done?('（此前已成功 '+done+' 条）'):'')+'<br>'+(sheets.length>1?'已一次性提交给服务器逐条写入':'')+'<br><b>请稍候，不要关闭本窗口</b></div>'
+    +'</div>';
   v9ioPushBatch(sheets,wr).then(function(rs){
     state._ionLastWriteTs=null;
     /* 更新待同步区：本批 ts 全部剔除，失败的再放回去 */
@@ -3804,9 +3815,8 @@ function _ionWrite(sheets, wr, ts, totalN, doneN){
 }
 /* 结果面板：成功=绿「录入成功」+关闭；失败=红「未成功」+原因+重试/关闭 */
 function _ionWriteResult(rs, batchSheets, wr, ts, totalN, doneN){
-  var panel=document.getElementById('ionConfirmPanel');
+  var card=_ionResEl();
   var done=doneN||0;
-  if(!panel) return;
   var succN=rs.succ.length, failN=rs.fail.length;
   var h='';
   try{ _clog('write-result',(rs.ok?'成功':'失败')+' '+succN+' 成功 / '+failN+' 失败 '+(rs.fail[0]&&rs.fail[0].err||''),
@@ -3835,13 +3845,11 @@ function _ionWriteResult(rs, batchSheets, wr, ts, totalN, doneN){
       +'<button type="button" class="btn p" data-act="ionRetryWrite" style="min-width:150px;font-weight:700">🔁 重试写入</button>'
       +'</div></div>';
   }
-  panel.innerHTML=h;
-  panel.scrollIntoView({behavior:'smooth', block:'center'});
+  card.innerHTML=h;
 }
 /* v48：写入自检 —— 一步步测「手机→服务器」「服务器→金山」「登录身份」，结果直接显示在面板上 */
 function ionDiag(tid){
   var wr=getV9ioWebhook();
-  var panel=document.getElementById('ionConfirmPanel');
   var tgt=tid?document.getElementById(tid):null;
   if(!wr||!wr.url){ toast('未配置服务器地址，请先登录'); return; }
   var s=getSess()||{};
@@ -3851,12 +3859,13 @@ function ionDiag(tid){
              '<b>账号</b> '+esc(s.u||'未登录')+' · '+(s.stok?'<b style="color:#1F7A41">会话有效</b>':'<b style="color:#C0392B">无会话（会被拒）</b>')];
   function show(loading){
     if(tgt){ tgt.innerHTML=lines.join('<br>'); return; }
-    if(!panel) return;
-    panel.innerHTML='<div style="padding:20px 14px;background:var(--w1);border:1.5px solid var(--ac-l);border-radius:14px">'
-      +'<div style="font-size:22px">🔍</div>'
-      +'<div style="font-size:15px;font-weight:800;margin-top:6px">自检结果</div>'
-      +'<div style="font-size:12.5px;color:var(--t3);margin-top:8px;line-height:1.9;text-align:left">'+lines.join('<br>')+'</div>'
-      +'<div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
+    /* v60：自检结果也显示在全屏浮层弹窗（与录入结果同一套窗口） */
+    var card=_ionResEl();
+    card.innerHTML='<div style="padding:24px 16px;text-align:center">'
+      +'<div style="font-size:26px">🔍</div>'
+      +'<div style="font-size:16px;font-weight:800;margin-top:6px">自检结果</div>'
+      +'<div style="font-size:13px;color:var(--t3);margin-top:10px;line-height:1.9;text-align:left">'+lines.join('<br>')+'</div>'
+      +'<div style="margin-top:18px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">'
       +(loading?'<span style="font-size:12px;color:var(--t3)">测试中…</span>'
               :'<button type="button" class="btn" data-act="ionCloseWrite" style="min-width:110px">关闭</button>'
                +'<button type="button" class="btn p" data-act="ionRetryWrite" style="min-width:150px">🔁 重试写入</button>')
@@ -3897,7 +3906,8 @@ function ionRetryWrite(){
   if(!wr || !wr.url){ toast('服务器地址未配置，请先登录或填地址'); return; }
   var s=getSess();
   if(s && (s.src==='offline' || s.src==='local') && !s.stok){ toast('当前是离线/本地身份，写入会被拒 —— 请退出用账号重新登录'); return; }
-  _ionWrite(r.sheets, wr, Date.now(), r.totalN, r.done||0);
+  /* v60：重试沿用原批次 ts —— 成功后 _ionWrite 才能从待同步区剔掉本轮失败条目（原来用新 ts 剔不掉，待同步区残留） */
+  _ionWrite(r.sheets, wr, r.ts||Date.now(), r.totalN, r.done||0);
 }
 /* v47：失败后手动再复制一次待同步 JSON（可粘给我走 MCP 补写） */
 function ionCopyFailJson(){
@@ -3914,6 +3924,7 @@ function ionCopyFailJson(){
    v48：复用此函数同时处理「新增出入」流程——重置 rows + ioFormStep，并重置主按钮文本 */
 function ionCloseWrite(){
   state._ionRetry=null;
+  _ionResHide();
   try{ closeModal(); }catch(e){}
   var panel=document.getElementById('ionConfirmPanel');
   if(panel) panel.innerHTML='';
@@ -5906,7 +5917,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v59.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v60.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
