@@ -983,18 +983,31 @@ function loadV9(){
     try{
       var wh=getV9ioWebhook();
       var _s0=getSess();
-      if(wh.mode==='server' && wh.url && d.generated_at && !(_s0&&_s0.role==='user')){
+      if((wh.mode==='server'||wh.url) && d.generated_at && !(_s0&&_s0.role==='user')){
         var t=new Date(d.generated_at.replace(/-/g,'/')).getTime();
-        if(!isNaN(t) && (Date.now()-t)/3600000 > 12){ syncV9Now(); }
+        /* v56：同步只要 ~4s，阈值从 12 小时收紧到 30 分钟，进页面就自动拉到此刻 */
+        if(!isNaN(t) && (Date.now()-t)/60000 > 30){ syncV9Now(true); }
       }
     }catch(e){}
   }).catch(function(){ V9ERR='⚠ 线上数据获取失败，当前显示的是本地缓存，可能已过期'; if(state.tab==='v9')render(); });
 }
+/* v56：刷新缓存 —— 拉线上静态 data.v9.json；若线上这份也过期（>30 分钟），
+   明确告诉辉哥去点「同步最新数据」，避免误以为已经是最新。 */
 function refreshV9(){
   toast('正在刷新 V9.1 数据…');
-  fetch('data.v9.json?t='+Date.now(),{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){
-    V9ERR=''; V9=d; UPD_MARKED=false; markUpdateRecords(); SS('wb_v9_data_v9',d); toast('V9.1 数据已刷新'); if(state.tab==='v9')render();
-  }).catch(function(){ toast('刷新失败：确认已部署且 data.v9.json 可访问'); });
+  try{ _clog('refresh-start','点击刷新缓存',{}); }catch(e){}
+  fetch('data.v9.json?t='+Date.now(),{cache:'no-store',headers:{'Cache-Control':'no-cache'}}).then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(d){
+    V9ERR=''; V9=d; UPD_MARKED=false; markUpdateRecords(); SS('wb_v9_data_v9',d); state.v9Src='static';
+    var _g=d.generated_at||'';
+    var _age=99999;
+    try{ if(_g) _age=(Date.now()-new Date(_g.replace(/-/g,'/')).getTime())/60000; }catch(e){}
+    if(_age>30){
+      toast('已刷新，但线上数据生成于 '+_g+'（已 '+(Math.round(_age))+' 分钟）\n点「同步最新数据」拉到此刻');
+    }else{
+      toast('V9.1 数据已刷新（'+_g+'）');
+    }
+    if(state.tab==='v9')render();
+  }).catch(function(){ try{ _clog('refresh-fail','刷新失败',{}); }catch(e){} toast('刷新失败：确认已部署且 data.v9.json 可访问'); });
 }
 /* 把一份数据应用到运行时（V9）+ 本地缓存 + 重渲染 */
 function applyV9(d, src){
@@ -1002,41 +1015,67 @@ function applyV9(d, src){
   state.v9Src = src||'static';
   if(state.tab==='v9'||state.tab==='io'||state.tab==='home') render();
 }
-/* 一键同步：优先走本机直连通道（v91-crud 服务端 /api/sync 实时拉 V9.1 全量），
-   服务端不可用时回退到静态 data.v9.json 重新拉取（github.io）。 */
-function syncV9Now(){
+/* v56：实时同步 —— 一次请求直接从服务端拿最新数据（实测 ~4s），
+   不再依赖「后台 job + 轮询 + git push + Pages CDN」那条长链路。
+   服务端没有 /api/sync-now（老版本）时自动回退到旧的 /api/sync + 轮询。 */
+function syncV9Now(silent){
   var wh=getV9ioWebhook();
-  if(isOffline()){ toast('离线浏览模式：不能同步，当前是部署时的静态数据'); return; }
-  if(wh.mode!=='server' || !wh.url){
-    toast('未配置直连通道，改为刷新缓存'); return refreshV9();
-  }
-  var base=wh.url.replace(/\/+$/,'');
-  toast('正在从 V9.1 同步最新数据…');
-  fetch(base+'/api/sync',{method:'POST',headers:_ioAuthHeaders(true)})
-    .then(function(r){ if(_ioIs401(r)){ _ioExpired(); return null; } return r.json().then(function(j){return {ok:r.ok,status:r.status,body:j};}); })
-    .then(function(res){
-      if(!res) return;
-      if(!res.ok || !res.body || !res.body.ok){
-        var _e403=((res.body&&res.body.error)||'');
-        if(_e403.indexOf('仅管理员')>-1){ toast('⚠ 受限账号不能触发全局同步'); return; }
-        throw new Error(_e403||'sync start failed');
-      }
-      pollSync(base, 0);
-    })
-    .catch(function(){ toast('⚠ 同步服务不可用，已改为刷新缓存'); refreshV9(); });
+  if(isOffline()){ if(!silent) toast('离线浏览模式：不能同步，当前是部署时的静态数据'); return; }
+  var base=((wh.url||'')||V9IO_BUILTIN_URL||'').replace(/\/+$/,'');
+  if(!base){ if(!silent){ toast('未配置服务器地址，改为刷新缓存'); refreshV9(); } return; }
+  if(!silent) toast('正在从 V9.1 拉取最新数据…');
+  try{ _clog('sync-start', silent?'自动同步':'点击同步', {url:base}); }catch(e){}
+  var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+  var t=setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, 120000);
+  var opt={method:'POST',headers:_ioAuthHeaders(true)};
+  if(ctrl) opt.signal=ctrl.signal;
+  fetch(base+'/api/sync-now',opt).then(function(r){
+    if(_ioIs401(r)){ _ioExpired(); return null; }
+    return r.json().then(function(j){return {st:r.status,body:j};});
+  }).then(function(res){
+    clearTimeout(t);
+    if(!res) return;
+    var b=res.body||{};
+    if(res.st===404 || res.st===405 || res.st===501){ return syncV9Legacy(base, silent); }  /* 老服务端 */
+    if(!b.ok){ throw new Error(b.error||('HTTP '+res.st)); }
+    if(!b.data){ throw new Error('服务端未返回数据'); }
+    applyV9(b.data,'live');
+    var g=b.generated_at||'';
+    if(!silent) toast('✅ 已同步到最新（'+g+'）');
+    try{ _clog('sync-ok','同步成功',{g:g,counts:b.counts}); }catch(_e){}
+  }).catch(function(e){
+    clearTimeout(t);
+    var msg=String((e&&e.message)||e||'');
+    if(/abort/i.test(msg)) msg='超时（超过 120 秒）';
+    try{ _clog('sync-fail', msg, {url:base}); }catch(_e){}
+    if(!silent){ toast('⚠ 实时同步失败：'+msg.slice(0,60)+'｜已改为刷新缓存'); refreshV9(); }
+  });
 }
-function pollSync(base, n){
-  if(n>40){ toast('⚠ 同步超时，请稍后重试'); refreshV9(); return; }
+/* 回退：老服务端的 /api/sync + 轮询（新服务端不会走到这里） */
+function syncV9Legacy(base, silent){
+  fetch(base+'/api/sync',{method:'POST',headers:_ioAuthHeaders(true)})
+    .then(function(r){ if(_ioIs401(r)){_ioExpired(); return null;} return r.json(); })
+    .then(function(j){
+      if(!j || !j.ok){ throw new Error((j&&j.error)||'sync start failed'); }
+      pollSync(base,0,silent);
+    })
+    .catch(function(e){
+      try{ _clog('sync-legacy-fail', String((e&&e.message)||e), {url:base}); }catch(_e){}
+      if(!silent){ toast('⚠ 同步不可用，已改为刷新缓存'); refreshV9(); }
+    });
+}
+function pollSync(base, n, silent){
+  if(n>60){ if(!silent) toast('⚠ 同步超时，请稍后重试'); refreshV9(); return; }
   fetch(base+'/api/sync-status',{method:'GET',headers:_ioAuthHeaders(false),cache:'no-store'})
-    .then(function(r){ if(_ioIs401(r)){ _ioExpired(); return null; } return r.json(); })
+    .then(function(r){ if(_ioIs401(r)){_ioExpired(); return null;} return r.json(); })
     .then(function(st){
       if(!st) return;
-      if(st.running){ setTimeout(function(){ pollSync(base, n+1); }, 2500); return; }
-      if(st.error){ toast('⚠ 同步失败：'+(st.error||'').slice(0,80)); refreshV9(); return; }
-      if(st.data){ applyV9(st.data, 'live'); toast('✅ 已同步最新数据（生成于 '+st.generated_at+'）'); }
-      else { toast('同步未返回数据，已改为刷新缓存'); refreshV9(); }
+      if(st.running){ setTimeout(function(){ pollSync(base, n+1, silent); }, 2000); return; }
+      if(st.error){ if(!silent) toast('⚠ 同步失败：'+(st.error||'').slice(0,80)); refreshV9(); return; }
+      if(st.data){ applyV9(st.data, 'live'); if(!silent) toast('✅ 已同步最新数据（生成于 '+st.generated_at+'）'); }
+      else if(!silent){ toast('同步未返回数据，已改为刷新缓存'); refreshV9(); }
     })
-    .catch(function(){ toast('⚠ 同步状态获取失败，已改为刷新缓存'); refreshV9(); });
+    .catch(function(){ if(!silent) refreshV9(); });
 }
 function pageV9(){
   if(!V9){
@@ -2406,7 +2445,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v55';
+var APP_VER='v56';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5784,7 +5823,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v55.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v56.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
