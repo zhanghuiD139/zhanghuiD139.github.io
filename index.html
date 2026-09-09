@@ -971,6 +971,11 @@ function fmtQty(n){n=+n||0; if(n>=1e8)return (n/1e8).toFixed(2)+'亿'; if(n>=1e4
 /* 精确值（带千分位不缩写）：用于详情查询出入库流水的「数量/金额」明细列。
    与 fmtCNY/fmtQty 的差别：不做"万/亿"进位，原数即显示；如 50400→"50,400"、756000→"756,000" */
 function fmtRaw(n){n=+n||0; return n.toLocaleString('zh-CN',{maximumFractionDigits:4});}
+/* v62：产品规格空白规范化（去换行/多空格/全角空格，前后 trim）。
+   sheet2 「产品规格」原样含 \\n 或多空格（手填），sheet3 Lookup 已通过 clean_model ' '.join(s.split()) 规范，
+   任意一端做匹配比较时必须先把双方都规范化，否则 `'a  b'(双空格)` vs `'a b'(单空格)` indexOf 永久不匹配。
+   含全角空格 \\u3000（中文文档常混入）。*/
+function _normProd(s){return (s||'').replace(/[\s\u3000]+/g,' ').trim();}
 function loadV9(){
   /* 数据文件与缓存键均已改名（data.v9.json / wb_v9_data_v9），
      旧键里可能冻结着 167.5万 的过期数据，改名后彻底失效，只以线上数据为准 */
@@ -1933,12 +1938,14 @@ function renderDetailGroup(c, events, defaultOpen){
         /* 按 brief.products 顺序排序（用户认知的"第 1 种产品"对得上） */
         var orderedKeys = [];
         products.forEach(function(p){
-          var fullKey = (p.product||'').trim();
+          var fullKey = _normProd(p.product);
           if(!fullKey) return;
           var hit = null, hitCQ = 0;
           Object.keys(bucket).forEach(function(k){
             if(hit) return;
-            if(k===fullKey || (k && fullKey && k.indexOf(fullKey)>-1)){ hit = k; hitCQ = +(p.contractQty||0); }
+            /* v62：双方都规范化后比较，规避 sheet2 原值（\\n/多空格）vs sheet3 Lookup（已 clean_model）的空白不一致 */
+            var kn = _normProd(k);
+            if(kn===fullKey || (fullKey && kn.indexOf(fullKey)>-1)){ hit = k; hitCQ = +(p.contractQty||0); }
           });
           if(hit && orderedKeys.indexOf(hit)<0){
             orderedKeys.push(hit);
@@ -2530,7 +2537,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v61';
+var APP_VER='v62';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5688,11 +5695,11 @@ document.addEventListener('click',function(e){
     var _uniq=[];
     _found.forEach(function(c){
       if(_seen[c.pid]){
-        /* 同项目号多产品时，每条 brief 行带各自的 contractQty（sheet2 J 字段） */
-        _seen[c.pid].products.push({product:c.product||'', ptype:c.ptype||'', contractQty:+(c.contractQty||0)});
+        /* v62：聚合时把规格规范化（去 \\n/多空格），匹配循环再两侧都规一次，三道防线避免「K9GBGD8U0E-\\nW000000」vs「K9GBGD8U0E- W000000」类型的不匹配 */
+        _seen[c.pid].products.push({product:_normProd(c.product||''), ptype:c.ptype||'', contractQty:+(c.contractQty||0)});
       } else {
         var cc=Object.assign({}, c);
-        cc.products=[{product:c.product||'', ptype:c.ptype||'', contractQty:+(c.contractQty||0)}];
+        cc.products=[{product:_normProd(c.product||''), ptype:c.ptype||'', contractQty:+(c.contractQty||0)}];
         _seen[c.pid]=cc;
         _uniq.push(cc);
       }
@@ -5920,7 +5927,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v61.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v62.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
