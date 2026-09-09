@@ -884,7 +884,7 @@ function _srvAutoTip(){
     var cur=((getMeta().v9ioWebhookUrl)||'').trim() || built;
     if(!cur) return;
     var ctrl=new AbortController(); var to=setTimeout(function(){try{ctrl.abort()}catch(e){}},5000);
-    fetch(cur.replace(/\/+$/,'')+'/api/health',{cache:'no-store',signal:ctrl.signal})
+    _ioFetch(cur.replace(/\/+$/,'')+'/api/health',{cache:'no-store',signal:ctrl.signal})
       .then(function(r){clearTimeout(to);return r.json();})
       .then(function(j){
         if(j && j.ok){
@@ -902,7 +902,7 @@ function _srvDownTip(el, cur, built){
     '⚠ 服务器没连上（电脑关机 / 服务没开 / 地址变了）。<br>'+
     '可以<a href="javascript:;" data-act="loginOffline" style="color:var(--amber-t);font-weight:600;text-decoration:underline">离线浏览</a>：看得到数据，但不能写、不能同步。</div>';
   if(built && cur!==built){
-    fetch(built.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
+    _ioFetch(built.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
       .then(function(r){return r.json();})
       .then(function(j){
         if(!j || !j.ok) return;
@@ -1015,22 +1015,42 @@ function applyV9(d, src){
   state.v9Src = src||'static';
   if(state.tab==='v9'||state.tab==='io'||state.tab==='home') render();
 }
+/* v59：隧道请求统一封装 —— CF quick tunnel 连接复用坑的系统性修复。
+   浏览器与 CF edge 之间是 HTTP/2，复用一条已被对端关闭的连接时会瞬间 "Failed to fetch"
+   （v48 自检、v49 写入、v58 同步各踩过一次，同一根因）。统一规则：
+   1) 一律 cache:'no-store'，写请求加 keepalive；
+   2) 网络类失败（Failed to fetch/TypeError/network）延迟 450ms，URL 加 cache buster
+      强制新连接自动重试一次（只重试一次防循环）。所有走隧道的 fetch 都应改用本函数。 */
+function _ioFetch(url, opt, _noretry){
+  opt=opt||{};
+  opt.cache='no-store';
+  if(opt.method && opt.method!=='GET') opt.keepalive=true;
+  return fetch(url,opt).catch(function(e){
+    var msg=String((e&&e.message)||e||'');
+    if(/Failed to fetch|TypeError|network/i.test(msg) && !_noretry){
+      return new Promise(function(rs){ setTimeout(function(){
+        rs(_ioFetch(url+(url.indexOf('?')>=0?'&':'?')+'_='+Date.now(), opt, true));
+      },450); });
+    }
+    throw e;
+  });
+}
 /* v56：实时同步 —— 一次请求直接从服务端拿最新数据（实测 ~4s），
    不再依赖「后台 job + 轮询 + git push + Pages CDN」那条长链路。
    服务端没有 /api/sync-now（老版本）时自动回退到旧的 /api/sync + 轮询。 */
-function syncV9Now(silent, _noretry){
+function syncV9Now(silent){
   var wh=getV9ioWebhook();
   if(isOffline()){ if(!silent) toast('离线浏览模式：不能同步，当前是部署时的静态数据'); return; }
   var base=((wh.url||'')||V9IO_BUILTIN_URL||'').replace(/\/+$/,'');
   if(!base){ if(!silent){ toast('未配置服务器地址，改为刷新缓存'); refreshV9(); } return; }
-  if(!silent && !_noretry) toast('正在从 V9.1 拉取最新数据…');
-  try{ _clog('sync-start', silent?'自动同步':(_noretry?'自动重试':'点击同步'), {url:base}); }catch(e){}
+  if(!silent) toast('正在从 V9.1 拉取最新数据…');
+  try{ _clog('sync-start', silent?'自动同步':'点击同步', {url:base}); }catch(e){}
   var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
   var t=setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, 120000);
-  /* v58：no-store + keepalive，重试时再加 cache buster 强制开新连接（CF tunnel 连接复用坑） */
-  var opt={method:'POST',headers:_ioAuthHeaders(true),cache:'no-store',keepalive:true};
+  var opt={method:'POST',headers:_ioAuthHeaders(true)};
   if(ctrl) opt.signal=ctrl.signal;
-  fetch(base+'/api/sync-now'+(_noretry?'?_='+Date.now():''),opt).then(function(r){
+  /* v59：_ioFetch 统一处理 no-store/keepalive + 网络失败自动重试（连接复用坑） */
+  _ioFetch(base+'/api/sync-now',opt).then(function(r){
     if(_ioIs401(r)){ _ioExpired(); return null; }
     return r.json().then(function(j){return {st:r.status,body:j};});
   }).then(function(res){
@@ -1048,13 +1068,6 @@ function syncV9Now(silent, _noretry){
   }).catch(function(e){
     clearTimeout(t);
     var msg=String((e&&e.message)||e||'');
-    /* v58：CF tunnel 连接复用导致偶发 "Failed to fetch"（v49 在写入链路已踩过同一坑）。
-       网络类失败延迟 450ms 强制新连接自动重试一次，只重试一次防循环。 */
-    if(/Failed to fetch|TypeError|network/i.test(msg) && !_noretry){
-      try{ _clog('sync-retry','网络失败自动重试',{url:base}); }catch(_e){}
-      setTimeout(function(){ syncV9Now(silent, true); }, 450);
-      return;
-    }
     if(/abort/i.test(msg)) msg='超时（超过 120 秒）';
     try{ _clog('sync-fail', msg, {url:base}); }catch(_e){}
     if(!silent){ toast('⚠ 实时同步失败：'+msg.slice(0,60)+'｜已改为刷新缓存'); refreshV9(); }
@@ -1062,8 +1075,7 @@ function syncV9Now(silent, _noretry){
 }
 /* 回退：老服务端的 /api/sync + 轮询（新服务端不会走到这里） */
 function syncV9Legacy(base, silent){
-  /* v58：同样加 no-store + cache buster 防连接复用坑 */
-  fetch(base+'/api/sync?_='+Date.now(),{method:'POST',headers:_ioAuthHeaders(true),cache:'no-store',keepalive:true})
+  _ioFetch(base+'/api/sync',{method:'POST',headers:_ioAuthHeaders(true)})
     .then(function(r){ if(_ioIs401(r)){_ioExpired(); return null;} return r.json(); })
     .then(function(j){
       if(!j || !j.ok){ throw new Error((j&&j.error)||'sync start failed'); }
@@ -1076,7 +1088,7 @@ function syncV9Legacy(base, silent){
 }
 function pollSync(base, n, silent){
   if(n>60){ if(!silent) toast('⚠ 同步超时，请稍后重试'); refreshV9(); return; }
-  fetch(base+'/api/sync-status',{method:'GET',headers:_ioAuthHeaders(false),cache:'no-store'})
+  _ioFetch(base+'/api/sync-status',{method:'GET',headers:_ioAuthHeaders(false),cache:'no-store'})
     .then(function(r){ if(_ioIs401(r)){_ioExpired(); return null;} return r.json(); })
     .then(function(st){
       if(!st) return;
@@ -2143,7 +2155,7 @@ function auditLoad(){
   state.audit.loading=true; state.audit.err='';
   var q='?limit=300';
   if(state.auditQ) q+='&q='+encodeURIComponent(state.auditQ);
-  fetch(w.url.replace(/\/+$/,'')+'/api/audit'+q,{headers:_ioAuthHeaders(false),cache:'no-store'})
+  _ioFetch(w.url.replace(/\/+$/,'')+'/api/audit'+q,{headers:_ioAuthHeaders(false),cache:'no-store'})
     .then(function(r){ if(_ioIs401(r)){ _ioExpired(); return null; } return r.json().then(function(j){return {st:r.status,body:j};}); })
     .then(function(res){
       if(!res) return;
@@ -2516,7 +2528,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v58';
+var APP_VER='v59';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -2572,7 +2584,7 @@ function v9ioFetchLive(opts){
   var body = {from:opts.from||'', to:opts.to||'', dir:opts.dir||'', wh:(opts.wh==='全部'?'':opts.wh)||'', limit:2000};
   state.v9ioLiveLoading=true;
   var url = (w.url||'').replace(/\/$/,'')+'/api/io-query';
-  return fetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify(body)})
+  return _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify(body)})
     .then(function(r){ if(_ioIs401(r)){ _ioExpired(); return null; } return r.json(); })
     .then(function(j){
       if(!j) return;
@@ -2599,7 +2611,7 @@ function learnLoad(){
   try{ if(state.tab==='idea') render(); }catch(_e){}
   if(!w.url){ state.learnErr='未配置学习通道'; state.learnLoading=false; try{if(state.tab==='idea')render();}catch(_e){} return Promise.resolve(); }
   var url=(w.url||'').replace(/\/$/,'')+'/api/learning/today?days=30';
-  return fetch(url,{method:'GET', headers:_ioAuthHeaders(false)})
+  return _ioFetch(url,{method:'GET', headers:_ioAuthHeaders(false)})
     .then(function(r){return r.json()})
     .then(function(j){
       if(!j || !j.ok) throw new Error((j&&j.error)||'learning/today 返回失败');
@@ -3852,11 +3864,11 @@ function ionDiag(tid){
   }
   if(tgt) tgt.innerHTML='⏳ 测试中…'; else show(true);
   var t0=Date.now();
-  fetch(base+'/api/health',{headers:_ioAuthHeaders(false)}).then(function(r){
+  _ioFetch(base+'/api/health',{headers:_ioAuthHeaders(false)}).then(function(r){
     lines.push((r.status===200?'✅':'❌')+' <b>手机→服务器</b> HTTP '+r.status+'（'+(Date.now()-t0)+'ms）');
     /* v48：蒙广妹手机发现第一次 fetch 后立即第二次 fetch 报 "Failed to fetch"（CF tunnel 连接复用导致服务端 close）。
-       加 250ms 间隔强制浏览器开新连接。*/
-    return new Promise(function(rs){setTimeout(function(){rs(fetch(base+'/api/io-probe',{headers:_ioAuthHeaders(true)}))},250);});
+       加 250ms 间隔 + v59 _ioFetch 自动重试，双保险。*/
+    return new Promise(function(rs){setTimeout(function(){rs(_ioFetch(base+'/api/io-probe',{headers:_ioAuthHeaders(true)}))},250);});
   }).then(function(r2){
     return r2.json().then(function(j){return {st:r2.status, j:j};});
   }).then(function(o){
@@ -4893,7 +4905,7 @@ async function v9DlXlsx(){
   toast('正在拉取 V9.1 多维表格原始数据…');
   var base=wh.url.replace(/\/+$/,''), H=_ioAuthHeaders(false);
   var fetchRaw=function(sid){
-    return fetch(base+'/api/v91/raw?sid='+sid,{headers:H,cache:'no-store'}).then(function(r){
+    return _ioFetch(base+'/api/v91/raw?sid='+sid,{headers:H,cache:'no-store'}).then(function(r){
       if(!r.ok) throw new Error('sheet '+sid+' HTTP '+r.status);
       return r.json();
     });
@@ -4951,7 +4963,7 @@ async function v9DlInv(){
   toast('正在拉取合同详情用于仓库盘点…');
   var s2;
   try{
-    var r=await fetch(wh.url.replace(/\/+$/,'')+'/api/v91/raw?sid=2',{headers:_ioAuthHeaders(false),cache:'no-store'});
+    var r=await _ioFetch(wh.url.replace(/\/+$/,'')+'/api/v91/raw?sid=2',{headers:_ioAuthHeaders(false),cache:'no-store'});
     if(!r.ok) throw new Error('HTTP '+r.status);
     s2=await r.json();
   }catch(e){ toast('拉取失败：'+(e&&e.message||'')+' · 请检查 V9.1 直写通道是否可达'); return; }
@@ -5371,7 +5383,7 @@ document.addEventListener('click',function(e){
     }
     var ctrl=new AbortController();
     var t=setTimeout(function(){ctrl.abort()},6000);
-    fetch(wh1.url.replace(/\/+$/,'')+'/api/health',{signal:ctrl.signal,headers:_ioAuthHeaders(false)})
+    _ioFetch(wh1.url.replace(/\/+$/,'')+'/api/health',{signal:ctrl.signal,headers:_ioAuthHeaders(false)})
       .then(function(r){clearTimeout(t);return r.json().then(function(j){return {ok:r.ok,body:j};})})
       .then(function(rs){
         if(rs.ok&&rs.body&&rs.body.ok) toast('✅ 连通 · 服务时间 '+rs.body.ts);
@@ -5776,7 +5788,7 @@ document.addEventListener('click',function(e){
     var _tu=(val('lgUrl')||'').trim();
     if(!_tu){toast('请先填写服务器地址');return}
     toast('正在测试连接…');
-    fetch(_tu.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
+    _ioFetch(_tu.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
       .then(function(r){return r.json();})
       .then(function(j){ toast(j&&j.ok?'✅ 服务器在线，可以登录':'⚠ 服务器返回异常'); })
       .catch(function(){ toast('❌ 连不上：地址不对，或电脑上的服务没开'); });
@@ -5819,7 +5831,7 @@ document.addEventListener('click',function(e){
     /* 连不上时：若内置地址还活着，自动切过去并提示重试（隧道换地址的常见场景） */
     function _fallbackSwitch(){
       if(_built && w.url && w.url!==_built){
-        fetch(_built.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
+        _ioFetch(_built.replace(/\/+$/,'')+'/api/health',{cache:'no-store'})
           .then(function(r){return r.json();})
           .then(function(j){
             if(j && j.ok){ setV9ioWebhook('server',_built,''); toast('原地址已失效，已切到最新服务器地址，请重新点登录'); }
@@ -5829,7 +5841,7 @@ document.addEventListener('click',function(e){
     }
     {
       /* v43：服务端在线 → 以 auth.json 为权威（同事账号在此校验，角色由服务端决定） */
-      fetch(w.url.replace(/\/+$/,'')+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,pass:p})})
+      _ioFetch(w.url.replace(/\/+$/,'')+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:u,pass:p})})
         .then(function(r){return r.json().then(function(j){return {ok:r.ok,status:r.status,body:j};});})
         .then(function(res){
           if(!res.ok){
@@ -5894,7 +5906,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v58.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v59.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
