@@ -1864,29 +1864,21 @@ function renderDetailGroup(c, events, defaultOpen){
               '<span class="srcline" style="margin-left:auto">流水 '+blk.events.length+' 笔</span>'+
             '</div>'+
             whArr.map(function(wh){
-              /* v51：按合同币种决定符号，每个产品只显示一种货币（USD → $，CNY → ¥），不显示换算副标
-                 辉哥 9/9 反馈：USD 合同不要再换算成人民币显示，统一美元 */
-              var _ccy = (blk.events[0]&&blk.events[0].ccy)||'';
-              var _sym = _ccy==='USD' ? '$' : '¥';
               return '<div class="qd-metric">'+
                 '<div class="qd-mh">'+
                   _cell('仓库', esc(wh)) +
-                  _cell('单价', (avgPrice?_sym+avgPrice.toFixed(2):'<span style="color:var(--t3)">—</span>')) +
+                  _cell('单价', (avgPrice?'¥'+avgPrice.toFixed(2)+'<br><span class="qd-m-sub">$'+avgPriceUsd.toFixed(2)+'</span>':'<span style="color:var(--t3)">—</span>')) +
                   _cell('库存', '<span class="qd-m-big" style="color:'+(stock<0?'var(--red)':(stock>0?'var(--green)':'var(--t3)'))+'">'+fmtRaw(stock)+'</span>'+_unit('个') + '<br><span class="qd-m-sub">合同 <b style="color:'+(contractQty?'var(--t1)':'var(--t3)')+'">'+(contractQty?fmtRaw(contractQty):'—')+'</b> 个</span>') +
                   _cell('流水', '<span style="color:var(--green)"><b>'+fmtRaw(inQty)+'</b> 个 入</span><br><span style="color:var(--red)"><b>'+fmtRaw(outQty)+'</b> 个 出</span>') +
-                  _cell('金额', '<span style="color:var(--green)"><b>'+_sym+fmtRaw(inAmt)+'</b> 入</span><br><span style="color:var(--red)"><b>'+_sym+fmtRaw(outAmt)+'</b> 出</span>') +
+                  _cell('金额', '<span style="color:var(--green)"><b>¥'+fmtRaw(inAmt)+'</b> 入</span><br><span style="color:var(--red)"><b>¥'+fmtRaw(outAmt)+'</b> 出</span>') +
                 '</div>'+
               '</div>';
             }).join('')+
             /* 明细表保持原样 */
             '<div class="tbl-scroll" style="margin-top:10px"><table class="v9tbl"><thead><tr><th>日期</th><th>方向</th><th>合同号</th><th>仓库</th><th class="num">数量（个）</th><th class="num">单价（元）</th><th class="num">金额（元）</th></tr></thead><tbody>'+
-            /* v49：按币种决定符号（USD 合同的 17.5 是美元不是人民币） */
             blk.events.slice().sort(function(a,b){return a.date<b.date?1:-1}).map(function(r){
               var dir=r.dir==='入'?'<span style="color:var(--green-t);font-weight:700">入</span>':'<span style="color:#E03A3F;font-weight:700">出</span>';
-              var ccy = r.ccy||'';
-              var sym = ccy==='USD' ? '$' : '¥';
-              var priceHtml = r.price?(sym+(+r.price).toFixed(2)):'—';
-              return '<tr><td>'+esc(r.date)+'</td><td>'+dir+'</td><td>'+esc(r.contract||'')+'</td><td>'+esc(r.wh||'-')+'</td><td class="num">'+fmtRaw(r.qty)+'</td><td class="num">'+priceHtml+'</td><td class="num"><b>'+sym+fmtRaw(r.amt||0)+'</b></td></tr>';
+              return '<tr><td>'+esc(r.date)+'</td><td>'+dir+'</td><td>'+esc(r.contract||'')+'</td><td>'+esc(r.wh||'-')+'</td><td class="num">'+fmtRaw(r.qty)+'</td><td class="num">'+(r.price?'¥'+r.price.toFixed(2):'—')+'</td><td class="num">¥'+fmtRaw(r.amt)+'</td></tr>';
             }).join('')+
             '</tbody></table></div>'+
           '</div>';
@@ -2406,7 +2398,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v51';
+var APP_VER='v49';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5699,7 +5691,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v51.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v49.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
