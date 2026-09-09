@@ -2406,7 +2406,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v53';
+var APP_VER='v54';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -3268,6 +3268,7 @@ function ionPreviewPid(){
    关键：项目号是「权威来源」→ 改项目号时同步覆盖 buy/sale/customer
         合同号是「辅助来源」→ 只填空 buy/sale/customer，保留用户改的项目号 */
 var _ION_AF_DEBOUNCE=null;
+var _ION_PICK_HITS=[]; // v54：候选合同暂存（多匹配弹窗用）
 function ionAutoFill(){
   clearTimeout(_ION_AF_DEBOUNCE);
   _ION_AF_DEBOUNCE=setTimeout(function(){
@@ -3279,11 +3280,33 @@ function ionAutoFill(){
     var hit=null, matchedById=false;
     /* 优先级：项目号 > 采购合同号 > 销售合同号 */
     if(pidRaw && pidRaw.length>5){
-      hit=sb.find(function(r){return r.pid===pidRaw});
+      /* v54：项目号末段数字去前导 0 容错（输 40 也能匹配 040） */
+      var noStr=val('ion_no').trim();
+      var noNum=noStr? parseInt(noStr,10) : NaN;
+      var _modeVal=val('ion_mode');
+      var pidPrefix='LB-'+val('ion_year')+(/^外贸/.test(_modeVal)?'-J':'');
+      hit=sb.find(function(r){
+        if(!r.pid) return false;
+        if(r.pid===pidRaw) return true;
+        if(!isNaN(noNum) && r.pid.indexOf(pidPrefix+'-')===0){
+          var tail=r.pid.substring(pidPrefix.length+1);
+          if(parseInt(tail,10)===noNum) return true;
+        }
+        return false;
+      });
       if(hit) matchedById=true;
     }
-    if(!hit && buy){ hit=sb.find(function(r){return r.buy===buy}); }
-    if(!hit && sale){ hit=sb.find(function(r){return r.sale===sale}); }
+    /* v54：采购/销售合同号支持子串模糊搜索；多匹配弹窗选 */
+    if(!hit && buy){
+      var buyHits=ionContractSearch(sb,'buy',buy);
+      if(buyHits.length===1){ hit=buyHits[0]; }
+      else if(buyHits.length>1){ ionPickContractModal(buyHits,'buy'); return; }
+    }
+    if(!hit && sale){
+      var saleHits=ionContractSearch(sb,'sale',sale);
+      if(saleHits.length===1){ hit=saleHits[0]; }
+      else if(saleHits.length>1){ ionPickContractModal(saleHits,'sale'); return; }
+    }
     if(hit){
       /* 回填项目号段（只填空） */
       if(hit.pid){
@@ -3335,6 +3358,39 @@ function ionAutoFill(){
       if(hint){ hint.style.display='inline-flex'; hint.style.color='var(--t3)'; hint.innerHTML='未匹配到合同（项目号/合同号可能尚无记录）'; }
     }
   }, 250);
+}
+/* v54：合同号子串模糊搜索（不区分大小写），返回所有匹配的合同记录 */
+function ionContractSearch(records,field,q){
+  if(!q) return [];
+  var ql=q.toLowerCase();
+  return records.filter(function(r){
+    var v=r[field];
+    return v && String(v).toLowerCase().indexOf(ql)>=0;
+  });
+}
+/* v54：多个候选时弹窗让用户选择；点击后填入 buy/sale 框并重跑 ionAutoFill 走严格匹配 */
+function ionPickContractModal(hits,type){
+  _ION_PICK_HITS=hits;
+  var body=
+    '<div style="font-size:12.5px;color:var(--t2);margin-bottom:10px">找到 '+hits.length+' 个匹配「<b style="color:var(--t1)">'+esc(type==='buy'?'采购':'销售')+'</b>」的合同，点选一个：</div>'+
+    '<div style="max-height:55vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg)">'+
+    hits.map(function(r,i){
+      var no=type==='buy'? r.buy : r.sale;
+      return '<div data-act="ionPickContract" data-idx="'+i+'" data-type="'+type+'" '+
+        'style="padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:10px;align-items:center">'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-weight:700;font-size:14px;color:var(--t1);word-break:break-all">'+esc(no||'-')+'</div>'+
+          '<div style="font-size:12px;color:var(--t2);margin-top:3px">'+
+            '<span>项目：'+esc(r.pid||'-')+'</span>'+
+            (r.customer? ' · 下家 '+esc(r.customer) : '')+
+            (r.product? ' · '+esc(r.product) : '')+
+          '</div>'+
+        '</div>'+
+        '<div style="color:var(--green);font-size:18px">›</div>'+
+      '</div>';
+    }).join('')+
+    '</div>';
+  openModal('选合同',body,'',null,{icon:'search'});
 }
 /* 预通知：把 sheet2_brief 中匹配到的产品填到 #ion_product */
 function ionLoadProductOptions(records){
@@ -5370,6 +5426,20 @@ document.addEventListener('click',function(e){
   if(act==='ionConfirmProduct'){ ionConfirmProduct(); return; }
   if(act==='ionAddCustomer'){ ionAddCustomer(); return; }
   if(act==='ionDelCustomer'){ ionDelCustomer(+id); return; }
+  if(act==='ionPickContract'){
+    /* v54：用户点击候选合同 → 填入 buy/sale 框 → 关弹窗 → 重跑 ionAutoFill（此时走严格匹配） */
+    var idx=+id;
+    var picked=_ION_PICK_HITS[idx];
+    if(picked){
+      var t=el.dataset.type;
+      var v=t==='buy'? picked.buy : picked.sale;
+      if(v){ val_set(t==='buy'?'ion_buy':'ion_sale', v); }
+      closeModal();
+      _ION_PICK_HITS=[];
+      ionAutoFill();
+    }
+    return;
+  }
   if(act==='ionSave'){ ionSave(); return; }
   if(act==='ionNewOne'){
     /* 「+ 再录一条」：取消自动恢复定时器，清空 rows，重新渲染空表单（保留方向/项目号/合同号不变） */
@@ -5714,7 +5784,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v53.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v54.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
