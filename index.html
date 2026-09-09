@@ -2406,7 +2406,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v52';
+var APP_VER='v53';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -3889,8 +3889,8 @@ function ionRenderCanvas(){
   kv('采购合同号', d.buy);
   kv('销售合同号', d.sale);
   kv('销售下家', d.customers.join('、'));
-  // 司机信息（合并为单文本）
-  var drvTxt=d.drv?'司机：'+d.drv:'';
+  // 司机信息（v53：去掉"司机："前缀，辉哥 9/9 反馈）
+  var drvTxt=d.drv||'';
   kv('司机信息', drvTxt);
   // 备注
   if(d.note){ kv('备注', d.note); }
@@ -5714,7 +5714,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v52.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v53.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
