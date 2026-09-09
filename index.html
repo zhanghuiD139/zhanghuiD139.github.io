@@ -1040,6 +1040,7 @@ function syncV9Now(silent){
     if(!b.ok){ throw new Error(b.error||('HTTP '+res.st)); }
     if(!b.data){ throw new Error('服务端未返回数据'); }
     applyV9(b.data,'live');
+    setLastSyncAt(Date.now());
     var g=b.generated_at||'';
     if(!silent) toast('✅ 已同步到最新（'+g+'）');
     try{ _clog('sync-ok','同步成功',{g:g,counts:b.counts}); }catch(_e){}
@@ -1072,10 +1073,65 @@ function pollSync(base, n, silent){
       if(!st) return;
       if(st.running){ setTimeout(function(){ pollSync(base, n+1, silent); }, 2000); return; }
       if(st.error){ if(!silent) toast('⚠ 同步失败：'+(st.error||'').slice(0,80)); refreshV9(); return; }
-      if(st.data){ applyV9(st.data, 'live'); if(!silent) toast('✅ 已同步最新数据（生成于 '+st.generated_at+'）'); }
+      if(st.data){ applyV9(st.data, 'live'); setLastSyncAt(Date.now()); if(!silent) toast('✅ 已同步最新数据（生成于 '+st.generated_at+'）'); }
       else if(!silent){ toast('同步未返回数据，已改为刷新缓存'); refreshV9(); }
     })
     .catch(function(){ if(!silent) refreshV9(); });
+}
+
+/* ===== v57：定时自动同步 =====
+   辉哥要求：① 每 30 分钟自动同步一次；② 随时可手动点「同步」立即拉到此刻。
+   实现：5 分钟一个检查节拍，距上次成功同步满 30 分钟才真正跑一次（省电、不打扰）；
+        手机从后台切回前台 / 网络恢复时立即检查一次；
+        手动点「同步最新数据」直接跑，不受 30 分钟节流限制。 */
+var AUTO_SYNC_MS=30*60*1000;      /* 自动同步间隔：30 分钟 */
+var AUTO_SYNC_TICK=5*60*1000;     /* 检查节拍：5 分钟 */
+var K_LASTSYNC='gzt_last_sync_at';
+/* 距某个时间点过了多久（用于「上次同步 X 分钟前」这类提示） */
+function agoTxt(t){
+  if(!t) return '';
+  var m=Math.round((Date.now()-t)/60000);
+  if(m<1) return '刚刚';
+  if(m<60) return m+' 分钟前';
+  var h=Math.floor(m/60);
+  if(h<24) return h+' 小时前';
+  return Math.floor(h/24)+' 天前';
+}
+function getLastSyncAt(){ try{ return (+(localStorage.getItem(K_LASTSYNC)||0))||0; }catch(e){ return 0; } }
+function setLastSyncAt(t){ try{ localStorage.setItem(K_LASTSYNC, String(t||Date.now())); }catch(e){} }
+function autoSyncDue(){ return (Date.now()-getLastSyncAt()) >= AUTO_SYNC_MS; }
+/* 是否允许自动同步：已登录 + 非离线身份 + 非受限账号 + 有服务器地址 */
+function canAutoSync(){
+  try{
+    if(typeof isOffline==='function' && isOffline()) return false;
+    var s=getSess();
+    if(!s || !s.user) return false;
+    if(s.src==='offline') return false;
+    if(s.role==='user') return false;          /* 受限账号：服务端亦 403，不白跑 */
+    var wh=getV9ioWebhook();
+    if(!(wh.url||V9IO_BUILTIN_URL)) return false;
+    return true;
+  }catch(e){ return false; }
+}
+function autoSyncTick(force){
+  try{
+    if(!force){
+      if(!canAutoSync()) return;
+      if(!autoSyncDue()) return;
+    }
+    syncV9Now(true);
+  }catch(e){}
+}
+function startAutoSync(){
+  try{
+    setInterval(function(){ autoSyncTick(false); }, AUTO_SYNC_TICK);
+    document.addEventListener('visibilitychange', function(){
+      if(!document.hidden) setTimeout(function(){ autoSyncTick(false); }, 800);
+    });
+    window.addEventListener('online', function(){ setTimeout(function(){ autoSyncTick(false); }, 800); });
+    /* 开页面 20 秒后先检查一次（避开启动高峰，也不至于一进来就卡） */
+    setTimeout(function(){ autoSyncTick(false); }, 20000);
+  }catch(e){}
 }
 function pageV9(){
   if(!V9){
@@ -1087,8 +1143,14 @@ function pageV9(){
   var sub=state.v9sub||'inv';
   var h='';
   var _sV9=getSess();
+  var _autoLine='';
+  if(_sV9 && _sV9.role!=='user'){
+    var _la=0; try{ _la=getLastSyncAt(); }catch(e){}
+    _autoLine='<br><span style="font-size:12px;color:var(--t3)">自动同步每 30 分钟'+
+      (_la? (' · 上次 '+esc(agoTxt(_la))) : ' · 上次 —')+'</span>';
+  }
   h+='<div class="page-head"><h2>'+ic('box','var(--ac)',22)+'业务数据</h2>'+
-     '<span class="sub">数据生成于 '+esc(V9.generated_at||'')+(state.v9Src==='live'?' · <b style="color:var(--green)">已实时同步</b>':'')+'</span></div>'+
+     '<span class="sub">数据生成于 '+esc(V9.generated_at||'')+(state.v9Src==='live'?' · <b style="color:var(--green)">已实时同步</b>':'')+_autoLine+'</span></div>'+
      (V9ERR?'<div style="border:1px solid var(--red);background:var(--red-s);color:var(--red-t);padding:10px 12px;border-radius:10px;margin-bottom:12px;font-size:13px">'+esc(V9ERR)+'</div>':'');
   h+='<div class="btn-row" style="margin-bottom:12px">'+
      (_sV9&&_sV9.role==='user'?'':'<button class="btn p" data-act="syncV9Now">'+ic('refresh','#fff',15)+'同步最新数据</button>')+
@@ -2445,7 +2507,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v56';
+var APP_VER='v57';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5823,7 +5885,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v56.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v57.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
@@ -5875,6 +5937,7 @@ loadV9();
 applyTheme();
 render();
 initPWA();
+startAutoSync();   /* v57：每 30 分钟自动同步 + 切回前台/网络恢复时补一次 */
 document.addEventListener('keydown',function(e){ if(e.key==='Escape')closeModal(); });
 </script>
 </body>
