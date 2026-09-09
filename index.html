@@ -1935,15 +1935,17 @@ function renderDetailGroup(c, events, defaultOpen){
         products.forEach(function(p){
           var fullKey = (p.product||'').trim();
           if(!fullKey) return;
-          var hit = null;
+          var hit = null, hitCQ = 0;
           Object.keys(bucket).forEach(function(k){
             if(hit) return;
-            if(k===fullKey || (k && fullKey && k.indexOf(fullKey)>-1)){ hit = k; }
+            if(k===fullKey || (k && fullKey && k.indexOf(fullKey)>-1)){ hit = k; hitCQ = +(p.contractQty||0); }
           });
           if(hit && orderedKeys.indexOf(hit)<0){
             orderedKeys.push(hit);
             bucket[hit].matched = true;
             bucket[hit].ptype = p.ptype||'';
+            /* v61：合同数量直接来自 sheet2 J「合同数量」（一行=该产品合同总数），不再用 inQty+stock 推算 */
+            bucket[hit].contractQty = hitCQ;
           }
         });
         /* 落单桶（events 有但 brief 没列出的）追加到末尾 */
@@ -1967,9 +1969,9 @@ function renderDetailGroup(c, events, defaultOpen){
           var stock = inQty - outQty;
           var avgPrice = prices.length? (prices.reduce(function(a,b){return a+b;},0)/prices.length) : 0;
           var avgPriceUsd = avgPrice? (avgPrice/6.9) : 0;
-          /* 合同数量推算：入总 + max(0, 当前库存) = 已入库 + 在库剩余
-             含义：events 中所有「入」累加 + 剩余库存 = 隐含合同总量（纯出库合同则=0，显示—） */
-          var contractQty = inQty>0 ? (inQty + (stock>0?stock:0)) : 0;
+          /* v61：合同数量直接取 sheet2 J 字段（一行=该产品合同总数），不再用 inQty+stock 推算
+             （辉哥 9/9 反馈：之前单笔入场景下 8846→17692 即 ×2 错位） */
+          var contractQty = +(blk.contractQty||0);
           /* 多行：每产品按仓库拆行 */
           var whArr = Object.keys(whs).length? Object.keys(whs) : ['-'];
           var ptypeLbl = blk.ptype? '<span class="pill blue" style="margin-left:6px">'+esc(blk.ptype)+'</span>':'';
@@ -2528,7 +2530,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v60';
+var APP_VER='v61';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5686,10 +5688,11 @@ document.addEventListener('click',function(e){
     var _uniq=[];
     _found.forEach(function(c){
       if(_seen[c.pid]){
-        _seen[c.pid].products.push({product:c.product||'', ptype:c.ptype||''});
+        /* 同项目号多产品时，每条 brief 行带各自的 contractQty（sheet2 J 字段） */
+        _seen[c.pid].products.push({product:c.product||'', ptype:c.ptype||'', contractQty:+(c.contractQty||0)});
       } else {
         var cc=Object.assign({}, c);
-        cc.products=[{product:c.product||'', ptype:c.ptype||''}];
+        cc.products=[{product:c.product||'', ptype:c.ptype||'', contractQty:+(c.contractQty||0)}];
         _seen[c.pid]=cc;
         _uniq.push(cc);
       }
@@ -5917,7 +5920,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v60.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v61.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
