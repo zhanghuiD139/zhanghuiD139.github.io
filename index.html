@@ -1402,9 +1402,9 @@ function v9Io(mode){
          /* 日期区间 + 重置（删除项目号+查询按钮） */
          '<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">'+
          '<span class="srcline">日期</span>'+
-         '<input type="date" id="v9ioFrom" value="'+esc(vFrom)+'" style="height:30px;font-size:12.5px;border:1px solid var(--inp-b);border-radius:8px;padding:0 6px;background:var(--card)">'+
+         '<input type="date" id="v9ioFrom" value="'+esc(vFrom)+'" onchange="state.v9ioFrom=this.value" style="height:30px;font-size:12.5px;border:1px solid var(--inp-b);border-radius:8px;padding:0 6px;background:var(--card)">'+
          '<span class="srcline">至</span>'+
-         '<input type="date" id="v9ioTo" value="'+esc(vTo)+'" style="height:30px;font-size:12.5px;border:1px solid var(--inp-b);border-radius:8px;padding:0 6px;background:var(--card)">'+
+         '<input type="date" id="v9ioTo" value="'+esc(vTo)+'" onchange="state.v9ioTo=this.value" style="height:30px;font-size:12.5px;border:1px solid var(--inp-b);border-radius:8px;padding:0 6px;background:var(--card)">'+
          '<span class="srcline">仓库</span>'+
          '<select onchange="state.v9ioWh=this.value;render()" style="height:30px;font-size:12.5px;border:1px solid var(--inp-b);border-radius:8px;padding:0 8px;background:var(--card);max-width:170px">'+
            '<option value="全部" '+(whF==='全部'?'selected':'')+'>全部仓库</option>'+
@@ -1449,7 +1449,7 @@ function v9Io(mode){
                 缺的那一列显示"—"。避免出现"单价(元)=0 但实际已出库"误判。 */
              var pcCell = priceCny ? '¥'+(+priceCny).toFixed(2) : '<span class="muted">—</span>';
              var pdCell = priceUsd ? '$'+(+priceUsd).toFixed(4) : '<span class="muted">—</span>';
-             return '<tr><td>'+esc(r.date)+'</td><td>'+dir+'</td><td>'+esc(r.pid)+'</td><td>'+ctr+'</td><td class="model" title="'+esc(r.model||'')+'">'+mdl+'</td><td>'+esc(r.wh)+'</td><td class="num">'+qtyCell+'</td><td class="num">'+amtCell+'</td><td class="num">'+pcCell+'</td><td class="num">'+pdCell+'</td></tr>';
+             return '<tr'+(r.pid?' data-act="v9ioGoDetail" data-pid="'+esc(r.pid)+'" style="cursor:pointer" title="点击查看 '+esc(r.pid)+' 的合同详情"':'')+'><td>'+esc(r.date)+'</td><td>'+dir+'</td><td>'+(r.pid?'<b style="color:var(--ac)">'+esc(r.pid)+'</b>':esc(r.pid||''))+'</td><td>'+ctr+'</td><td class="model" title="'+esc(r.model||'')+'">'+mdl+'</td><td>'+esc(r.wh)+'</td><td class="num">'+qtyCell+'</td><td class="num">'+amtCell+'</td><td class="num">'+pcCell+'</td><td class="num">'+pdCell+'</td></tr>';
            }).join('');
            var body=det.length?('<div class="tbl-scroll"><table class="v9tbl v9io"><thead><tr><th>日期</th><th>方向</th><th>项目号</th><th>合同号</th><th>型号 / 产品</th><th>仓库</th><th class="num">数量</th><th class="num">金额</th><th class="num">单价(¥)</th><th class="num">单价($)</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
               (pool.length>300?'<div class="srcline" style="margin-top:8px">共 '+pool.length+' 笔，表格仅显示最新 300 笔（上方汇总为全部）；缩小日期范围可看完整明细</div>':''))
@@ -1883,6 +1883,52 @@ function _qDetailNoField(d){
   return d==='buy'?'qDetailNoBuy':d==='sale'?'qDetailNoSale':d==='supplier'?'qDetailNoSup':d==='customer'?'qDetailNoCust':'qDetailNoPid';
 }
 
+/* v63：详情查询·执行一次查询（共用查逻辑，给表单点「查询」+ 出入库明细行点跳转都用）。
+   返回 {dim, pid, match, found, evMap}。不写 state、不 render，调用方负责。*/
+function qDetailRun(_dim, _mode, _year, _no, _match){
+  var _brief=(V9 && V9.inventory && V9.inventory.sheet2_brief) || [];
+  var _found=[]; var _pid='';
+  var _hit=function(val){
+    if(!_no) return false;
+    if(!val) return false;
+    if(_match==='精准') return (val+'').toUpperCase()===_no.toUpperCase();
+    return (val+'').toUpperCase().indexOf(_no.toUpperCase())>-1;
+  };
+  if(_dim==='pid'){
+    var _mid=_mode==='外贸'?'-J':'';
+    _pid='LB-'+_year+_mid+'-'+_no.padStart(3,'0');
+    _found=_brief.filter(function(r){return r.pid===_pid});
+  } else if(_dim==='buy'){
+    _found=_brief.filter(function(r){return _hit(r.buy)});
+  } else if(_dim==='sale'){
+    _found=_brief.filter(function(r){return _hit(r.sale)});
+  } else if(_dim==='supplier'){
+    _found=_brief.filter(function(r){return _hit(r.supplier)});
+  } else if(_dim==='customer'){
+    _found=_brief.filter(function(r){return _hit(r.customer)});
+  }
+  /* 同 pid 多产品合并：每条合同的 products[]（v62 规范化） */
+  var _seen={}; var _uniq=[];
+  _found.forEach(function(c){
+    if(_seen[c.pid]){
+      _seen[c.pid].products.push({product:_normProd(c.product||''), ptype:c.ptype||'', contractQty:+(c.contractQty||0)});
+    } else {
+      var cc=Object.assign({}, c);
+      cc.products=[{product:_normProd(c.product||''), ptype:c.ptype||'', contractQty:+(c.contractQty||0)}];
+      _seen[c.pid]=cc;
+      _uniq.push(cc);
+    }
+  });
+  _found=_uniq;
+  var _evMap={};
+  if(_found.length){
+    var _allEv=(V9.io && V9.io.all_detail) || [];
+    _found.forEach(function(c){ _evMap[c.pid]=_allEv.filter(function(e){return e.pid===c.pid}); });
+    _pid=_pid||_found[0].pid;
+  }
+  return {dim:_dim, pid:_pid, match:_match, found:_found, evMap:_evMap};
+}
+
 /* 详情产品统计表格：8 列 th/td 助手函数
    对齐铁律（v28 调整）：
    - 全部列统一 right 对齐（数字按个位对齐、文字按字符末对齐 → 所有列右边界统一对齐，最整齐）
@@ -2073,7 +2119,7 @@ function pageIo(){
   if(!_years.length) _years=['2025','2026'];
   var _qRes=state.qDetailResult;
   var _phMap={pid:'如 024 / 078', buy:'如 SJ-LB-... 或片段', sale:'如 JZ-LB-... 或片段', supplier:'供方名称片段', customer:'下家名称片段'};
-  h+='<div class="card" style="margin-top:16px"><div class="card-h"><h3>'+ic('radar','var(--ac)',16)+'详情查询</h3>'+
+  h+='<div id="qDetailCard" class="card" style="margin-top:16px"><div class="card-h"><h3>'+ic('radar','var(--ac)',16)+'详情查询</h3>'+
      '<span class="srcline">'+_s2brief.length+' 条合同 · 5 维度 + 模糊/精准 · 结果按合同分组可折叠</span></div>'+
      /* 5 档维度按钮 */
      '<div class="btn-row" style="margin:0 0 12px">'+
@@ -2537,7 +2583,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v62';
+var APP_VER='v63';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5664,55 +5710,26 @@ document.addEventListener('click',function(e){
   if(act==='qDetail'){
     var _dim=state.qDetailDim, _mode=state.qDetailMode, _year=state.qDetailYear, _no=(state[_qDetailNoField(_dim)]||'').trim();
     var _match=state.qDetailMatch||'模糊';
-    if(!_no && _dim!=='pid'){toast('请填写编号');return}
-    if(!_no && _dim==='pid'){toast('请填写编号');return}
-    var _brief=(V9 && V9.inventory && V9.inventory.sheet2_brief) || [];
-    var _found=[];
-    var _pid='';
-    var _hit=function(val){
-      if(!_no) return false;
-      if(!val) return false;
-      if(_match==='精准') return (val+'').toUpperCase()===_no.toUpperCase();
-      return (val+'').toUpperCase().indexOf(_no.toUpperCase())>-1;
-    };
-    if(_dim==='pid'){
-      var _mid=_mode==='外贸'?'-J':'';
-      _pid='LB-'+_year+_mid+'-'+_no.padStart(3,'0');
-      _found=_brief.filter(function(r){return r.pid===_pid});
-    } else if(_dim==='buy'){
-      _found=_brief.filter(function(r){return _hit(r.buy)});
-    } else if(_dim==='sale'){
-      _found=_brief.filter(function(r){return _hit(r.sale)});
-    } else if(_dim==='supplier'){
-      _found=_brief.filter(function(r){return _hit(r.supplier)});
-    } else if(_dim==='customer'){
-      _found=_brief.filter(function(r){return _hit(r.customer)});
-    }
-    /* 预计算每个合同的出入库流水 */
-    var _evMap={};
-    /* 同 pid 多产品合并：每条合同的 products[] */
-    var _seen={};
-    var _uniq=[];
-    _found.forEach(function(c){
-      if(_seen[c.pid]){
-        /* v62：聚合时把规格规范化（去 \\n/多空格），匹配循环再两侧都规一次，三道防线避免「K9GBGD8U0E-\\nW000000」vs「K9GBGD8U0E- W000000」类型的不匹配 */
-        _seen[c.pid].products.push({product:_normProd(c.product||''), ptype:c.ptype||'', contractQty:+(c.contractQty||0)});
-      } else {
-        var cc=Object.assign({}, c);
-        cc.products=[{product:_normProd(c.product||''), ptype:c.ptype||'', contractQty:+(c.contractQty||0)}];
-        _seen[c.pid]=cc;
-        _uniq.push(cc);
-      }
-    });
-    _found=_uniq;
-    if(_found.length){
-      var _allEv=(V9.io && V9.io.all_detail) || [];
-      _found.forEach(function(c){
-        _evMap[c.pid]=_allEv.filter(function(e){return e.pid===c.pid});
-      });
-      _pid=_pid||_found[0].pid;
-    }
-    state.qDetailResult={dim:_dim,pid:_pid,match:_match,found:_found,evMap:_evMap};
+    if(!_no){toast('请填写编号');return}
+    state.qDetailResult = qDetailRun(_dim, _mode, _year, _no, _match);
+    render();return;
+  }
+  /* v63：出入库时间查询的明细行点击 → 直接跳到「详情查询」的合同详情。
+     解析项目号 → 设 state → 调 qDetailRun → 跳到「业务数据」页（state.tab='v9', state.v9sub='io'）展示结果。*/
+  if(act==='v9ioGoDetail'){
+    var pid=v||'';
+    var m=pid.match(/^LB-(\d{4})(?:-J)?-(\d+)$/i);
+    if(!m){toast('项目号格式异常：'+pid);return}
+    state.qDetailDim='pid';
+    state.qDetailMode = pid.indexOf('-J-')>-1 ? '外贸' : '内贸';
+    state.qDetailYear=m[1];
+    state.qDetailNoPid=String(+m[2]);  /* 去前导 0 */
+    state.qDetailMatch='精准';
+    state.qDetailResult = qDetailRun('pid', state.qDetailMode, state.qDetailYear, state.qDetailNoPid, '精准');
+    if(!state.qDetailResult.found.length){toast('合同详情未找到 '+pid+'（可能未在合同详情表登记）');return}
+    state.tab='v9'; state.v9sub='io';
+    /* 滚到详情查询模块顶部（v9→io 子页内） */
+    setTimeout(function(){var e=document.getElementById('qDetailCard');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})},0);
     render();return;
   }
   if(act==='qDetailReset'){state.qDetailResult=null;state.qDetailNoPid=state.qDetailNoBuy=state.qDetailNoSale=state.qDetailNoSup=state.qDetailNoCust='';render();return}
@@ -5927,7 +5944,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v62.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v63.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
