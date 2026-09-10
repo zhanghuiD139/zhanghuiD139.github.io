@@ -2588,7 +2588,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v67';
+var APP_VER='v68';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -2641,7 +2641,7 @@ function v9ioFetchLive(opts){
   var w=getV9ioWebhook();
   if(!w.url){ state.v9ioLiveErr='未配置直写通道'; return Promise.resolve(); }
   opts = opts || {};
-  var body = {from:opts.from||'', to:opts.to||'', dir:opts.dir||'', wh:(opts.wh==='全部'?'':opts.wh)||'', limit:2000};
+  var body = {from:opts.from||'', to:opts.to||'', dir:opts.dir||'', wh:(opts.wh==='全部'?'':opts.wh)||'', limit:5000};
   state.v9ioLiveLoading=true;
   var url = (w.url||'').replace(/\/$/,'')+'/api/io-query';
   return _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify(body)})
@@ -5974,7 +5974,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v67.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v68.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
