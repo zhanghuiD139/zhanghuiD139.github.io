@@ -2583,7 +2583,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v63';
+var APP_VER='v64';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5717,9 +5717,10 @@ document.addEventListener('click',function(e){
   /* v63：出入库时间查询的明细行点击 → 直接跳到「详情查询」的合同详情。
      解析项目号 → 设 state → 调 qDetailRun → 跳到「业务数据」页（state.tab='v9', state.v9sub='io'）展示结果。*/
   if(act==='v9ioGoDetail'){
-    var pid=v||'';
+    /* 全局 click handler 只解出 data-act/data-id/data-v；明细行项目号在 data-pid 里，要单独从 el 取 */
+    var pid = (el.getAttribute('data-pid') || '').trim();
     var m=pid.match(/^LB-(\d{4})(?:-J)?-(\d+)$/i);
-    if(!m){toast('项目号格式异常：'+pid);return}
+    if(!m){toast('项目号格式异常：'+(pid||'(空)')+'（不是 LB-yyyy-NNN / LB-yyyy-J-NNN 格式）');return}
     state.qDetailDim='pid';
     state.qDetailMode = pid.indexOf('-J-')>-1 ? '外贸' : '内贸';
     state.qDetailYear=m[1];
@@ -5944,7 +5945,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v63.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v64.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
