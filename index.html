@@ -2583,7 +2583,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v64';
+var APP_VER='v65';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5715,7 +5715,8 @@ document.addEventListener('click',function(e){
     render();return;
   }
   /* v63：出入库时间查询的明细行点击 → 直接跳到「详情查询」的合同详情。
-     解析项目号 → 设 state → 调 qDetailRun → 跳到「业务数据」页（state.tab='v9', state.v9sub='io'）展示结果。*/
+     解析项目号 → 设 state → 调 qDetailRun → 跳到「出入库」主 tab（state.tab='io'，pageIo 渲染详情查询 card）展示结果。
+     注意：详情查询 card 在 pageIo() 里，v9→io 子页的 v9Io('brief') 不含详情查询 card，不能用 state.v9sub='io' 误进。*/
   if(act==='v9ioGoDetail'){
     /* 全局 click handler 只解出 data-act/data-id/data-v；明细行项目号在 data-pid 里，要单独从 el 取 */
     var pid = (el.getAttribute('data-pid') || '').trim();
@@ -5728,8 +5729,8 @@ document.addEventListener('click',function(e){
     state.qDetailMatch='精准';
     state.qDetailResult = qDetailRun('pid', state.qDetailMode, state.qDetailYear, state.qDetailNoPid, '精准');
     if(!state.qDetailResult.found.length){toast('合同详情未找到 '+pid+'（可能未在合同详情表登记）');return}
-    state.tab='v9'; state.v9sub='io';
-    /* 滚到详情查询模块顶部（v9→io 子页内） */
+    state.tab='io';
+    /* 滚到详情查询模块顶部（pageIo 里） */
     setTimeout(function(){var e=document.getElementById('qDetailCard');if(e)e.scrollIntoView({behavior:'smooth',block:'start'})},0);
     render();return;
   }
@@ -5945,7 +5946,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v64.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v65.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}

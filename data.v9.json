@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-09-10 14:02",
+  "generated_at": "2026-09-10 16:36",
   "source": "V9.1 物管数据平台 · 金山文档 V9.1.dbt",
   "file_id": "ELFCsW2891MbaXXvTwfgrxXYUwP6h6tYF",
   "inventory": {
-    "total_amt": 1727934760.55,
-    "total_qty": 24334466.0,
-    "done": 423,
-    "todo": 338,
-    "overdue": 203,
+    "total_amt": 1722457421.95,
+    "total_qty": 24314152.0,
+    "done": 431,
+    "todo": 330,
+    "overdue": 195,
     "by_warehouse": [
       {
         "wh": "邦达凤岗仓",
-        "amt": 994951798.3,
-        "qty": 7779440.0,
-        "cnt": 162
+        "amt": 1001403617.51,
+        "qty": 7786834.0,
+        "cnt": 164
       },
       {
         "wh": "中储有色库",
@@ -23,8 +23,8 @@
       },
       {
         "wh": "新宁东莞仓",
-        "amt": 206171311.82,
-        "qty": 11928568.0,
+        "amt": 200758625.11,
+        "qty": 11908318.0,
         "cnt": 161
       },
       {
@@ -94,7 +94,7 @@
       },
       {
         "type": "存储颗粒/存储器",
-        "amt": 55098281.93,
+        "amt": 49685595.22,
         "cnt": 100
       },
       {
@@ -109,7 +109,7 @@
       },
       {
         "type": "液晶显示屏",
-        "amt": 35160088.5,
+        "amt": 35095436.61,
         "cnt": 151
       },
       {
@@ -653,7 +653,7 @@
         ]
       }
     ],
-    "overdue_count": 203,
+    "overdue_count": 195,
     "by_year": {
       "LB-2025": {
         "amt": 18701246.89,
@@ -661,9 +661,9 @@
         "overdue": 19
       },
       "LB-2026": {
-        "amt": 1693745315.85,
+        "amt": 1688267977.25,
         "cnt": 420,
-        "overdue": 177
+        "overdue": 169
       }
     },
     "sheet2_brief": [
@@ -5989,8 +5989,8 @@
         "year": "2026",
         "mid": "",
         "no": "069",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "OZF/TF卡/V30/U3/A1/9050/15*11*mm/128GB",
         "ptype": "存储颗粒/存储器",
         "contractQty": 6000.0
@@ -6005,9 +6005,9 @@
         "year": "2026",
         "mid": "",
         "no": "069",
-        "status": "待完结",
-        "overdue": "逾期",
-        "product": "OZF/TF卡/PS8229+B4R8S A3309/N9R/V30/U3/C10/A2/15*11*mm/128G/1*1mm/256GB",
+        "status": "完结",
+        "overdue": "完结",
+        "product": "OZF/TF卡/PS8229+B48R/SA3309+N69R/V30/U3/C10/A2/DDR200/180/15*11*1mm/256GB",
         "ptype": "存储颗粒/存储器",
         "contractQty": 8000.0
       },
@@ -6037,8 +6037,8 @@
         "year": "2026",
         "mid": "",
         "no": "069",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/64 GB",
         "ptype": "存储颗粒/存储器",
         "contractQty": 1500.0
@@ -6053,8 +6053,8 @@
         "year": "2026",
         "mid": "",
         "no": "069",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/128GB",
         "ptype": "存储颗粒/存储器",
         "contractQty": 1500.0
@@ -6069,8 +6069,8 @@
         "year": "2026",
         "mid": "",
         "no": "069",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/256GB",
         "ptype": "存储颗粒/存储器",
         "contractQty": 3000.0
@@ -6085,8 +6085,8 @@
         "year": "2026",
         "mid": "",
         "no": "069",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /128GB",
         "ptype": "存储颗粒/存储器",
         "contractQty": 50.0
@@ -6101,8 +6101,8 @@
         "year": "2026",
         "mid": "",
         "no": "069",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /256GB",
         "ptype": "存储颗粒/存储器",
         "contractQty": 100.0
@@ -6117,8 +6117,8 @@
         "year": "2026",
         "mid": "",
         "no": "069",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /512GB",
         "ptype": "存储颗粒/存储器",
         "contractQty": 100.0
@@ -12768,9 +12768,9 @@
   "io": {
     "total": {
       "in_amt": 5606610510.98,
-      "out_amt": 3878079476.71,
+      "out_amt": 3883556815.31,
       "in_qty": 138809033,
-      "out_qty": 114156287
+      "out_qty": 114176601
     },
     "by_month": [
       {
@@ -12905,18 +12905,18 @@
         "month": "2026-09",
         "in_amt": 5648094.91,
         "in_qty": 110186,
-        "out_amt": 89272583.74,
-        "out_qty": 1098769,
-        "cnt": 39
+        "out_amt": 94749922.34,
+        "out_qty": 1119083,
+        "cnt": 48
       }
     ],
     "by_warehouse": [
       {
         "wh": "邦达凤岗仓",
-        "in_amt": 1823403502.58,
-        "out_amt": 824215113.97,
-        "in_qty": 18493591,
-        "out_qty": 10677671
+        "in_amt": 1829919973.68,
+        "out_amt": 824279765.86,
+        "in_qty": 18501049,
+        "out_qty": 10677735
       },
       {
         "wh": "虚拟仓",
@@ -12928,9 +12928,9 @@
       {
         "wh": "新宁东莞仓",
         "in_amt": 869240209.63,
-        "out_amt": 663068897.82,
+        "out_amt": 668481584.53,
         "in_qty": 69626607,
-        "out_qty": 57698039
+        "out_qty": 57718289
       },
       {
         "wh": "中储有色库",
@@ -13293,15 +13293,15 @@
       {
         "week": "2026-W37",
         "in_amt": 0.0,
-        "out_amt": 15743377.23
+        "out_amt": 21220715.83
       }
     ],
     "this_week": {
       "in_amt": 0.0,
-      "out_amt": 15743377.23,
+      "out_amt": 21220715.83,
       "in_qty": 0,
-      "out_qty": 410211,
-      "cnt": 6
+      "out_qty": 430525,
+      "cnt": 15
     },
     "week_detail": [
       {
@@ -13335,6 +13335,150 @@
         "price_cny": 40.86,
         "price_usd": 5.9217,
         "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TF卡/V30/U3/A1/9050/15*11*mm/128GB",
+        "wh": "新宁东莞仓",
+        "qty": 6000,
+        "amt": 987600.0,
+        "price": 164.6,
+        "amt_cny": 987600.0,
+        "amt_usd": 143130.4348,
+        "price_cny": 164.6,
+        "price_usd": 23.8551,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TF卡/PS8229+B48R/SA3309+N69R/V30/U3/C10/A2/DDR200/180/15*11*1mm/256GB",
+        "wh": "新宁东莞仓",
+        "qty": 8000,
+        "amt": 2930264.0,
+        "price": 366.283,
+        "amt_cny": 2930264.0,
+        "amt_usd": 424675.942,
+        "price_cny": 366.283,
+        "price_usd": 53.0845,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/64 GB",
+        "wh": "新宁东莞仓",
+        "qty": 1500,
+        "amt": 127433.55,
+        "price": 84.9557,
+        "amt_cny": 127433.55,
+        "amt_usd": 18468.6304,
+        "price_cny": 84.9557,
+        "price_usd": 12.3124,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/128GB",
+        "wh": "新宁东莞仓",
+        "qty": 1500,
+        "amt": 249557.52,
+        "price": 166.3717,
+        "amt_cny": 249557.52,
+        "amt_usd": 36167.7565,
+        "price_cny": 166.3717,
+        "price_usd": 24.1118,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/256GB",
+        "wh": "新宁东莞仓",
+        "qty": 3000,
+        "amt": 955752.0,
+        "price": 318.584,
+        "amt_cny": 955752.0,
+        "amt_usd": 138514.7826,
+        "price_cny": 318.584,
+        "price_usd": 46.1716,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /128GB",
+        "wh": "新宁东莞仓",
+        "qty": 50,
+        "amt": 17920.35,
+        "price": 358.407,
+        "amt_cny": 17920.35,
+        "amt_usd": 2597.1522,
+        "price_cny": 358.407,
+        "price_usd": 51.943,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /256GB",
+        "wh": "新宁东莞仓",
+        "qty": 100,
+        "amt": 53362.83,
+        "price": 533.6283,
+        "amt_cny": 53362.83,
+        "amt_usd": 7733.7435,
+        "price_cny": 533.6283,
+        "price_usd": 77.3374,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /512GB",
+        "wh": "新宁东莞仓",
+        "qty": 100,
+        "amt": 90796.46,
+        "price": 907.9646,
+        "amt_cny": 90796.46,
+        "amt_usd": 13158.9072,
+        "price_cny": 907.9646,
+        "price_usd": 131.5891,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-149",
+        "contract": "AX-LB-2026082501S",
+        "model": "BM6750LT1-1 6.75寸（85片取）",
+        "wh": "邦达凤岗仓",
+        "qty": 64,
+        "amt": 64651.89,
+        "price": 147.12,
+        "amt_cny": 446098.05,
+        "amt_usd": 64651.8912,
+        "price_cny": 1010.1858,
+        "price_usd": 147.12,
+        "ccy": "USD"
       },
       {
         "dir": "出",
@@ -14014,6 +14158,150 @@
       },
       {
         "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TF卡/V30/U3/A1/9050/15*11*mm/128GB",
+        "wh": "新宁东莞仓",
+        "qty": 6000,
+        "amt": 987600.0,
+        "price": 164.6,
+        "amt_cny": 987600.0,
+        "amt_usd": 143130.4348,
+        "price_cny": 164.6,
+        "price_usd": 23.8551,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TF卡/PS8229+B48R/SA3309+N69R/V30/U3/C10/A2/DDR200/180/15*11*1mm/256GB",
+        "wh": "新宁东莞仓",
+        "qty": 8000,
+        "amt": 2930264.0,
+        "price": 366.283,
+        "amt_cny": 2930264.0,
+        "amt_usd": 424675.942,
+        "price_cny": 366.283,
+        "price_usd": 53.0845,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/64 GB",
+        "wh": "新宁东莞仓",
+        "qty": 1500,
+        "amt": 127433.55,
+        "price": 84.9557,
+        "amt_cny": 127433.55,
+        "amt_usd": 18468.6304,
+        "price_cny": 84.9557,
+        "price_usd": 12.3124,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/128GB",
+        "wh": "新宁东莞仓",
+        "qty": 1500,
+        "amt": 249557.52,
+        "price": 166.3717,
+        "amt_cny": 249557.52,
+        "amt_usd": 36167.7565,
+        "price_cny": 166.3717,
+        "price_usd": 24.1118,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/256GB",
+        "wh": "新宁东莞仓",
+        "qty": 3000,
+        "amt": 955752.0,
+        "price": 318.584,
+        "amt_cny": 955752.0,
+        "amt_usd": 138514.7826,
+        "price_cny": 318.584,
+        "price_usd": 46.1716,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /128GB",
+        "wh": "新宁东莞仓",
+        "qty": 50,
+        "amt": 17920.35,
+        "price": 358.407,
+        "amt_cny": 17920.35,
+        "amt_usd": 2597.1522,
+        "price_cny": 358.407,
+        "price_usd": 51.943,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /256GB",
+        "wh": "新宁东莞仓",
+        "qty": 100,
+        "amt": 53362.83,
+        "price": 533.6283,
+        "amt_cny": 53362.83,
+        "amt_usd": 7733.7435,
+        "price_cny": 533.6283,
+        "price_usd": 77.3374,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /512GB",
+        "wh": "新宁东莞仓",
+        "qty": 100,
+        "amt": 90796.46,
+        "price": 907.9646,
+        "amt_cny": 90796.46,
+        "amt_usd": 13158.9072,
+        "price_cny": 907.9646,
+        "price_usd": 131.5891,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-149",
+        "contract": "AX-LB-2026082501S",
+        "model": "BM6750LT1-1 6.75寸（85片取）",
+        "wh": "邦达凤岗仓",
+        "qty": 64,
+        "amt": 64651.89,
+        "price": 147.12,
+        "amt_cny": 446098.05,
+        "amt_usd": 64651.8912,
+        "price_cny": 1010.1858,
+        "price_usd": 147.12,
+        "ccy": "USD"
+      },
+      {
+        "dir": "出",
         "date": "2026/09/09",
         "pid": "LB-2026-124",
         "contract": "ZF-LB-2026060201S",
@@ -14607,10 +14895,10 @@
     ],
     "week_summary": {
       "in_amt": 0.0,
-      "out_amt": 15743377.23,
+      "out_amt": 21220715.83,
       "in_qty": 0,
-      "out_qty": 410211,
-      "cnt": 6
+      "out_qty": 430525,
+      "cnt": 15
     },
     "prev_week_summary": {
       "in_amt": 5900973.94,
@@ -14621,10 +14909,10 @@
     },
     "month_summary": {
       "in_amt": 5648094.91,
-      "out_amt": 89272583.74,
+      "out_amt": 94749922.34,
       "in_qty": 110186,
-      "out_qty": 1098769,
-      "cnt": 39
+      "out_qty": 1119083,
+      "cnt": 48
     },
     "week_range": {
       "start": "09/07",
@@ -14670,6 +14958,150 @@
         "price_cny": 40.86,
         "price_usd": 5.9217,
         "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TF卡/V30/U3/A1/9050/15*11*mm/128GB",
+        "wh": "新宁东莞仓",
+        "qty": 6000,
+        "amt": 987600.0,
+        "price": 164.6,
+        "amt_cny": 987600.0,
+        "amt_usd": 143130.4348,
+        "price_cny": 164.6,
+        "price_usd": 23.8551,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TF卡/PS8229+B48R/SA3309+N69R/V30/U3/C10/A2/DDR200/180/15*11*1mm/256GB",
+        "wh": "新宁东莞仓",
+        "qty": 8000,
+        "amt": 2930264.0,
+        "price": 366.283,
+        "amt_cny": 2930264.0,
+        "amt_usd": 424675.942,
+        "price_cny": 366.283,
+        "price_usd": 53.0845,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/64 GB",
+        "wh": "新宁东莞仓",
+        "qty": 1500,
+        "amt": 127433.55,
+        "price": 84.9557,
+        "amt_cny": 127433.55,
+        "amt_usd": 18468.6304,
+        "price_cny": 84.9557,
+        "price_usd": 12.3124,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/128GB",
+        "wh": "新宁东莞仓",
+        "qty": 1500,
+        "amt": 249557.52,
+        "price": 166.3717,
+        "amt_cny": 249557.52,
+        "amt_usd": 36167.7565,
+        "price_cny": 166.3717,
+        "price_usd": 24.1118,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/SD卡/ORICO/UHS-I V30/U3/32*2*24.2mm/256GB",
+        "wh": "新宁东莞仓",
+        "qty": 3000,
+        "amt": 955752.0,
+        "price": 318.584,
+        "amt_cny": 955752.0,
+        "amt_usd": 138514.7826,
+        "price_cny": 318.584,
+        "price_usd": 46.1716,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /128GB",
+        "wh": "新宁东莞仓",
+        "qty": 50,
+        "amt": 17920.35,
+        "price": 358.407,
+        "amt_cny": 17920.35,
+        "amt_usd": 2597.1522,
+        "price_cny": 358.407,
+        "price_usd": 51.943,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /256GB",
+        "wh": "新宁东莞仓",
+        "qty": 100,
+        "amt": 53362.83,
+        "price": 533.6283,
+        "amt_cny": 53362.83,
+        "amt_usd": 7733.7435,
+        "price_cny": 533.6283,
+        "price_usd": 77.3374,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-069",
+        "contract": "YC-LB-2026031601S",
+        "model": "OZF/TFEX卡/PS5017-BIC S57/V30/U3/A1/15*11*mm /512GB",
+        "wh": "新宁东莞仓",
+        "qty": 100,
+        "amt": 90796.46,
+        "price": 907.9646,
+        "amt_cny": 90796.46,
+        "amt_usd": 13158.9072,
+        "price_cny": 907.9646,
+        "price_usd": 131.5891,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/10",
+        "pid": "LB-2026-149",
+        "contract": "AX-LB-2026082501S",
+        "model": "BM6750LT1-1 6.75寸（85片取）",
+        "wh": "邦达凤岗仓",
+        "qty": 64,
+        "amt": 64651.89,
+        "price": 147.12,
+        "amt_cny": 446098.05,
+        "amt_usd": 64651.8912,
+        "price_cny": 1010.1858,
+        "price_usd": 147.12,
+        "ccy": "USD"
       },
       {
         "dir": "出",
@@ -15317,7 +15749,7 @@
         "pid": "LB-2026-149",
         "contract": "AX-LB-2026082501S",
         "model": "BM6750LT1-1 6.75寸（85片取）",
-        "wh": "",
+        "wh": "邦达凤岗仓",
         "qty": 502,
         "amt": 507113.27,
         "price": 147.12,
@@ -15333,7 +15765,7 @@
         "pid": "LB-2026-149",
         "contract": "AX-LB-2026082501S",
         "model": "BM6750LT1-1 6.75寸（68片取）",
-        "wh": "",
+        "wh": "邦达凤岗仓",
         "qty": 1196,
         "amt": 966537.35,
         "price": 117.69,
@@ -15365,7 +15797,7 @@
         "pid": "LB-2026-149",
         "contract": "AX-LB-2026082501S",
         "model": "BM6750LT1-1 6.75寸（85片取）",
-        "wh": "",
+        "wh": "邦达凤岗仓",
         "qty": 1920,
         "amt": 1939556.74,
         "price": 147.12,
@@ -15381,7 +15813,7 @@
         "pid": "LB-2026-149",
         "contract": "AX-LB-2026082501S",
         "model": "BM6750LT1-1 6.75寸（68片取）",
-        "wh": "",
+        "wh": "邦达凤岗仓",
         "qty": 3840,
         "amt": 3103263.74,
         "price": 117.69,
@@ -26372,7 +26804,7 @@
         "date": "2026/04/14",
         "pid": "LB-2026-069",
         "contract": "YC-LB-2026031601S",
-        "model": "OZF/TF卡/PS8229+B4R8S A3309/N9R/V30/U3/C10/A2/15*11*mm/128G/1*1mm/256GB",
+        "model": "OZF/TF卡/PS8229+B48R/SA3309+N69R/V30/U3/C10/A2/DDR200/180/15*11*1mm/256GB",
         "wh": "新宁东莞仓",
         "qty": 8000,
         "amt": 2930264.0,
@@ -45444,10 +45876,10 @@
       {
         "quarter": "2026-Q3",
         "in_amt": 901287764.93,
-        "out_amt": 1216894474.34,
+        "out_amt": 1222371812.94,
         "in_qty": 16538021,
-        "out_qty": 24892719,
-        "cnt": 331
+        "out_qty": 24913033,
+        "cnt": 340
       }
     ]
   },
