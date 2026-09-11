@@ -321,6 +321,20 @@ a:hover{text-decoration:underline}
 .ext-fb-ic{font-size:44px;line-height:1}
 .ext-fb-t{font-size:19px;font-weight:700;color:var(--t1)}
 .ext-fb-d{font-size:13px;color:var(--t2);max-width:480px;line-height:1.8}
+/* 外链选择页（v73 重排）：入口 / 下载 两组，统一卡片外壳 + 自适应网格 */
+.hub-wrap{max-width:900px}
+.hub-sec{margin-bottom:20px}
+.hub-sec-t{display:flex;align-items:center;gap:9px;font-size:12px;font-weight:600;color:var(--t3);letter-spacing:.06em;margin:0 0 10px}
+.hub-sec-t:after{content:'';flex:1;height:1px;background:var(--inp-b)}
+.hub-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(252px,1fr));gap:11px}
+.hub-card{display:flex;align-items:center;gap:13px;padding:14px 16px;background:var(--card);border:1px solid var(--inp-b);border-radius:13px;cursor:pointer;font-family:inherit;text-align:left;text-decoration:none;color:inherit;transition:border-color .15s ease}
+.hub-card:hover{border-color:var(--ac-l)}
+.hub-card:active{transform:scale(.995)}
+.hub-ic{width:40px;height:40px;border-radius:11px;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff}
+.hub-tx{flex:1;min-width:0}
+.hub-t{font-size:14.5px;font-weight:650;color:var(--t1);line-height:1.32}
+.hub-d{font-size:11.5px;color:var(--t3);margin-top:3px;line-height:1.45}
+.hub-go{flex-shrink:0;font-size:14px;color:var(--t3);opacity:.7}
 .btn.big{padding:12px 22px;font-size:15px;margin-top:4px}
 /* 详情查询：合同分组折叠 */
 .qd-group{border:1px solid var(--ac-l);border-radius:12px;overflow:hidden;background:var(--card);margin-bottom:10px}
@@ -362,6 +376,7 @@ a:hover{text-decoration:underline}
 @media (max-width:780px){
   .qd-mh{grid-template-columns:repeat(2,1fr);}
   .qd-m{border-right:0;border-bottom:1px dashed var(--line);}
+  .hub-grid{grid-template-columns:1fr;}
 }
 
 </style>
@@ -1213,35 +1228,37 @@ function pageExt(url,name){
   },2000);
   return h;
 }
-/* 外链选择页（如氚云&多维表格）：主页面渲染两个大入口卡片 + V9.1 一键下载 */
+/* 外链选择页（如氚云&多维表格）：v73 重排为「系统入口 / 数据下载」两组，卡片外壳统一 */
 function pageExtHub(hub){
-  return '<div class="page-head">'+ic('cloud','var(--ac)',22)+'<h2>氚云 &amp; 多维表格</h2><span class="sub">点击下方入口跳转对应系统</span></div>'+
-  '<div style="display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:24px">'+
-  [hub.a, hub.b].map(function(x){
-    return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener" class="card ext-hub-card" style="display:flex;align-items:center;gap:14px;padding:18px 22px;width:320px;max-width:90vw;text-decoration:none;border:1px solid var(--ac-l);border-radius:14px;background:var(--w3);cursor:pointer">'+
-      '<div style="width:48px;height:48px;border-radius:12px;background:'+esc(x.c||'var(--ac)')+';color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic(x.ic||'cloud','#fff',22)+'</div>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:16px;font-weight:700;color:var(--t1)">'+esc(x.name)+'</div></div>'+
-      '<div style="color:var(--ac);font-size:22px;font-weight:700">↗</div>'+
-    '</a>';
-  }).join('')+
-  /* V9.1 多维表格一键下载：先 fetch 最新 data.v9.json，再触发浏览器下载 */
-  '<button data-act="v9DlXlsx" class="card ext-hub-card" style="display:flex;align-items:center;gap:14px;padding:18px 22px;width:320px;max-width:90vw;border:1px dashed var(--ac);border-radius:14px;background:var(--w1);cursor:pointer;font-family:inherit">'+
-    '<div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#FFC02E,#FF8A00);color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic('doc','#fff',22)+'</div>'+
-    '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">V9.1 多维表格 · 下载 Excel</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">导出为 .xlsx（合同详情 + 出入库，按 V9.1 多维表格原表结构）</div></div>'+
-    '<div style="color:var(--ac);font-size:22px;font-weight:700">⬇</div>'+
-  '</button>'+
-  /* 仓库盘点表（2026-09-07 新增）：选仓库后从合同详情筛出该仓库现有库存，下载 Excel 盘点表（公司抬头+盘点表标题+日期+仓库+8列明细+三签字行） */
-  '<button data-act="v9DlInv" class="card ext-hub-card" style="display:flex;align-items:center;gap:14px;padding:18px 22px;width:320px;max-width:90vw;border:1px dashed var(--sky-t);border-radius:14px;background:var(--sky-s);cursor:pointer;font-family:inherit">'+
-    '<div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#7BCFE8,var(--sky-t));color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic('box','#fff',22)+'</div>'+
-    '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">仓库盘点表 · 下载 Excel</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">选仓库 → 筛合同详情现有库存 → 下载盘点表</div></div>'+
-    '<div style="color:var(--sky-t);font-size:22px;font-weight:700">⬇</div>'+
-  '</button>'+
-  /* 半月报（2026-09-11 新增）：选期间 → 服务端按既定口径生成 Word */
-  '<button data-act="v9DlHalfMonth" class="card ext-hub-card" style="display:flex;align-items:center;gap:14px;padding:18px 22px;width:320px;max-width:90vw;border:1px dashed var(--green-t);border-radius:14px;background:rgba(46,204,113,0.08);cursor:pointer;font-family:inherit">'+
-    '<div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#2ecc71,var(--green-t));color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic('doc','#fff',22)+'</div>'+
-    '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">半月报 · 下载 Word</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">选起止日期 → 按该区间生成 Word 半月报</div></div>'+
-    '<div style="color:var(--green-t);font-size:22px;font-weight:700">⬇</div>'+
-  '</button>'+
+  var ent=[
+    {url:hub.a.url,name:hub.a.name,desc:'氚云工作台 · 表单与流程',ic:hub.a.ic||'cloud',c:hub.a.c||'var(--sky-t)'},
+    {url:hub.b.url,name:hub.b.name,desc:'合同详情 · 出入库台账',ic:hub.b.ic||'doc',c:hub.b.c||'var(--ac)'}
+  ];
+  var dl=[
+    {act:'v9DlXlsx',      name:'V9.1 多维表格 · 导出 Excel', desc:'合同详情 + 出入库 · 原表结构', ic:'doc', c:'linear-gradient(135deg,#FFC02E,var(--ac))'},
+    {act:'v9DlInv',       name:'仓库盘点表 · 导出 Excel',    desc:'选仓库 · 按现有库存生成盘点表', ic:'box', c:'linear-gradient(135deg,#6C8AE4,#4E6BD8)'},
+    {act:'v9DlHalfMonth', name:'半月报 · 导出 Word',         desc:'选起止日期 · 按区间生成汇报',   ic:'doc', c:'linear-gradient(135deg,#4BD08B,#2BA85F)'}
+  ];
+  return '<div class="page-head">'+ic('cloud','var(--ac)',22)+'<h2>氚云 &amp; 多维表格</h2><span class="sub">系统入口 · 数据下载</span></div>'+
+  '<div class="hub-wrap">'+
+    '<div class="hub-sec"><div class="hub-sec-t">系统入口</div><div class="hub-grid">'+
+      ent.map(function(x){
+        return '<a href="'+esc(x.url)+'" target="_blank" rel="noopener" class="hub-card">'+
+          '<div class="hub-ic" style="background:'+esc(x.c)+'">'+ic(x.ic,'#fff',20)+'</div>'+
+          '<div class="hub-tx"><div class="hub-t">'+esc(x.name)+'</div><div class="hub-d">'+esc(x.desc)+'</div></div>'+
+          '<div class="hub-go">↗</div>'+
+        '</a>';
+      }).join('')+
+    '</div></div>'+
+    '<div class="hub-sec"><div class="hub-sec-t">数据下载</div><div class="hub-grid">'+
+      dl.map(function(x){
+        return '<button data-act="'+x.act+'" class="hub-card">'+
+          '<div class="hub-ic" style="background:'+x.c+'">'+ic(x.ic,'#fff',20)+'</div>'+
+          '<div class="hub-tx"><div class="hub-t">'+esc(x.name)+'</div><div class="hub-d">'+esc(x.desc)+'</div></div>'+
+          '<div class="hub-go">⬇</div>'+
+        '</button>';
+      }).join('')+
+    '</div></div>'+
   '</div>';
 }
 function v9Inv(){
@@ -2603,7 +2620,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v72';
+var APP_VER='v73';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -6052,7 +6069,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v72.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v73.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
