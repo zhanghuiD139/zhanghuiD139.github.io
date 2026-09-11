@@ -1358,7 +1358,8 @@ function v9Io(mode){
      组合仓（如「邦达香港仓/新宁东莞仓」「中电石岩仓/中电虎门仓」）按辉哥口径只取最后一段仓库名（新宁东莞仓 / 中电虎门仓），
      下拉与筛选都走同一 whName()，保证"选新宁东莞仓"能命中含该仓的所有组合记录。 */
   function whName(s){var p=(s||'').split('/');return (p[p.length-1]||'').trim()}
-  var _whList=Array.from(new Set(allDet.map(function(x){return whName(x.wh)}).filter(Boolean))).sort();
+  /* 仓库下拉：live 模式用服务端返回的 wh_list（全集，不受 wh 过滤影响）；cache/fallback 模式从 allDet 派生 */
+  var _whList=(state.v9ioWhList&&state.v9ioWhList.length)?state.v9ioWhList.slice():Array.from(new Set(allDet.map(function(x){return whName(x.wh)}).filter(Boolean))).sort();
   function nd(s){return (s||'').replace(/\//g,'-')}
   /* 实时算本周/上周/本月日期范围（避免依赖生成器预切片 d.week_detail/d.month_detail，
      保证 data.v9.json 重新跑之前也能按 today() 当场筛出真实区间） */
@@ -1373,13 +1374,23 @@ function v9Io(mode){
   if(dirF!=='all') pool=pool.filter(function(x){return x.dir===(dirF==='in'?'入':'出')});
   if(whF!=='全部') pool=pool.filter(function(x){return whName(x.wh)===whF});
   if(vPid) pool=pool.filter(function(x){return (x.pid||'').indexOf(vPid)>-1});
-  var ssum={in_amt:0,out_amt:0,in_qty:0,out_qty:0,in_cnt:0,out_cnt:0,cnt:pool.length};
-  pool.forEach(function(x){
-    if(x.is_update) return; /* 2026-09-03：更新记录不计入汇总 */
-    var a=(x.amt_cny!=null?x.amt_cny:x.amt)||0;
-    var q=+x.qty||0;
-    if(x.dir==='入'){ssum.in_amt+=a;ssum.in_qty+=q;ssum.in_cnt++}else{ssum.out_amt+=a;ssum.out_qty+=q;ssum.out_cnt++}
-  });
+  /* 统计汇总：v69 起，实时数据优先用服务端 summary（按当前 方向/日期/仓库 过滤后的全量精确汇总，
+     不受 5000 截断影响，sheet3 超量时统计仍准）；cache/fallback 模式退化为对 pool 求和（含 is_update 排除）。 */
+  var ssum;
+  if(liveDet && liveDet.length && state.v9ioSummary){
+    var _S=state.v9ioSummary;
+    ssum={in_amt:_S.in_amt||0,out_amt:_S.out_amt||0,in_qty:_S.in_qty||0,out_qty:_S.out_qty||0,in_cnt:_S.in_cnt||0,out_cnt:_S.out_cnt||0,cnt:(_S.in_cnt||0)+(_S.out_cnt||0)};
+  } else {
+    ssum={in_amt:0,out_amt:0,in_qty:0,out_qty:0,in_cnt:0,out_cnt:0,cnt:pool.length};
+    pool.forEach(function(x){
+      if(x.is_update) return; /* 2026-09-03：更新记录不计入汇总 */
+      var a=(x.amt_cny!=null?x.amt_cny:x.amt)||0;
+      var q=+x.qty||0;
+      if(x.dir==='入'){ssum.in_amt+=a;ssum.in_qty+=q;ssum.in_cnt++}else{ssum.out_amt+=a;ssum.out_qty+=q;ssum.out_cnt++}
+    });
+  }
+  /* 顶部"全量 N 笔"标签的真实总数：实时模式取 summary 的精确总数，cache 模式取 allDet 长度 */
+  var _totalCnt=(liveDet && liveDet.length && state.v9ioSummary)?((state.v9ioSummary.in_cnt||0)+(state.v9ioSummary.out_cnt||0)):(allDet.length||0);
   var rLabel=rr==='custom'?((vFrom||'不限')+' ~ '+(vTo||'不限')):(rr==='month'?'本月':(rr==='prev'?('上周 '+esc(pwr.label||'')):(rr==='all'?'全部':('本周 '+esc(wr.label||'')+' · 已过 '+(wr.days||0)+' 天'))));
   if(whF!=='全部') rLabel+=' · '+esc(whF);
   /* 出入库明细·自定义查询 + 说明卡：仅独立「出入库」tab（mode!=='brief'）显示。
@@ -1391,7 +1402,7 @@ function v9Io(mode){
        '<summary style="display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:700;font-size:14.5px;list-style:none;padding:2px 0">'+
            ic('list','var(--ac)',16)+
            '<span>出入库时间查询</span>'+
-           '<span style="color:var(--t3);font-size:12.5px;margin-left:auto">'+(state.v9ioLiveLoading?'⟳ 实时拉取 V9.1…':('全量 '+(allDet.length||0)+' 笔 · '+dataSrc))+'</span>'+
+           '<span style="color:var(--t3);font-size:12.5px;margin-left:auto">'+(state.v9ioLiveLoading?'⟳ 实时拉取 V9.1…':('全量 '+_totalCnt+' 笔'+(state.v9ioTruncated?'（明细已截断，统计为全量）':'')+' · '+dataSrc))+'</span>'+
            '<button class="btn sm" data-act="v9ioRefresh" title="强制重新拉一次 V9.1">⟳</button>'+
          '</summary>'+
        '<div style="margin-top:14px">'+
@@ -1406,7 +1417,7 @@ function v9Io(mode){
          '<span class="srcline">至</span>'+
          '<input type="date" id="v9ioTo" value="'+esc(vTo)+'" onchange="state.v9ioTo=this.value" style="height:30px;font-size:12.5px;border:1px solid var(--inp-b);border-radius:8px;padding:0 6px;background:var(--card)">'+
          '<span class="srcline">仓库</span>'+
-         '<select onchange="state.v9ioWh=this.value;render()" style="height:30px;font-size:12.5px;border:1px solid var(--inp-b);border-radius:8px;padding:0 8px;background:var(--card);max-width:170px">'+
+         '<select onchange="state.v9ioWh=this.value;render();v9ioFetchLive(v9ioBuildParams())" style="height:30px;font-size:12.5px;border:1px solid var(--inp-b);border-radius:8px;padding:0 8px;background:var(--card);max-width:170px">'+
            '<option value="全部" '+(whF==='全部'?'selected':'')+'>全部仓库</option>'+
            _whList.map(function(w){return '<option value="'+esc(w)+'" '+(whF===w?'selected':'')+'>'+esc(w)+'</option>';}).join('')+
          '</select>'+
@@ -2588,7 +2599,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v68';
+var APP_VER='v69';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -2650,6 +2661,9 @@ function v9ioFetchLive(opts){
       if(!j) return;
       if(!j || !j.ok) throw new Error((j&&j.error)||'io-query 返回失败');
       state.v9ioLive = j.records||[];
+      state.v9ioSummary = j.summary||null;
+      state.v9ioWhList = j.wh_list||null;
+      state.v9ioTruncated = !!j.truncated;
       state.v9ioLiveAt = Date.now();
       state.v9ioLiveErr='';
       state.v9ioLiveLoading=false;
@@ -5974,7 +5988,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v68.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v69.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
