@@ -1,18 +1,18 @@
 {
-  "generated_at": "2026-09-11 16:12",
+  "generated_at": "2026-09-11 16:47",
   "source": "V9.1 物管数据平台 · 金山文档 V9.1.dbt",
   "file_id": "ELFCsW2891MbaXXvTwfgrxXYUwP6h6tYF",
   "inventory": {
-    "total_amt": 1752816361.03,
-    "total_qty": 24511906.0,
-    "done": 431,
-    "todo": 334,
-    "overdue": 209,
+    "total_amt": 1752078061.11,
+    "total_qty": 24485116.0,
+    "done": 434,
+    "todo": 331,
+    "overdue": 206,
     "by_warehouse": [
       {
         "wh": "邦达凤岗仓",
-        "amt": 1000561831.6,
-        "qty": 7783293.0,
+        "amt": 999823531.67,
+        "qty": 7756503.0,
         "cnt": 164
       },
       {
@@ -79,7 +79,7 @@
     "product_types": [
       {
         "type": "集成电路",
-        "amt": 970666232.79,
+        "amt": 969927932.87,
         "cnt": 153
       },
       {
@@ -653,17 +653,17 @@
         ]
       }
     ],
-    "overdue_count": 209,
+    "overdue_count": 206,
     "by_year": {
       "LB-2025": {
-        "amt": 18701246.89,
+        "amt": 18467749.74,
         "cnt": 256,
-        "overdue": 19
+        "overdue": 17
       },
       "LB-2026": {
-        "amt": 1718626916.33,
+        "amt": 1718122113.57,
         "cnt": 423,
-        "overdue": 183
+        "overdue": 182
       }
     },
     "sheet2_brief": [
@@ -3941,8 +3941,8 @@
         "year": "2025",
         "mid": "",
         "no": "109",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "集成电路eMMC 8GB\nKAS03111",
         "ptype": "集成电路",
         "contractQty": 660002.0
@@ -3957,8 +3957,8 @@
         "year": "2025",
         "mid": "",
         "no": "109",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "集成电路eMMC 32GB\nKASH6311",
         "ptype": "集成电路",
         "contractQty": 1000158.0
@@ -12197,8 +12197,8 @@
         "year": "2026",
         "mid": "",
         "no": "008",
-        "status": "待完结",
-        "overdue": "逾期",
+        "status": "完结",
+        "overdue": "完结",
         "product": "Small PKG eMMC 32GB;KASK62T1",
         "ptype": "集成电路",
         "contractQty": 218000.0
@@ -12816,9 +12816,9 @@
   "io": {
     "total": {
       "in_amt": 5637811235.98,
-      "out_amt": 3884398601.22,
+      "out_amt": 3885136901.15,
       "in_qty": 139010328,
-      "out_qty": 114180142
+      "out_qty": 114206932
     },
     "by_month": [
       {
@@ -12953,18 +12953,18 @@
         "month": "2026-09",
         "in_amt": 36848819.91,
         "in_qty": 311481,
-        "out_amt": 95591708.25,
-        "out_qty": 1122624,
-        "cnt": 55
+        "out_amt": 96330008.18,
+        "out_qty": 1149414,
+        "cnt": 61
       }
     ],
     "by_warehouse": [
       {
         "wh": "邦达凤岗仓",
         "in_amt": 1829919973.68,
-        "out_amt": 825121551.77,
+        "out_amt": 825859851.7,
         "in_qty": 18501049,
-        "out_qty": 10681276
+        "out_qty": 10708066
       },
       {
         "wh": "虚拟仓",
@@ -13346,7 +13346,7 @@
       {
         "week": "2026-W38",
         "in_amt": 0.0,
-        "out_amt": 347459.11
+        "out_amt": 1085759.04
       }
     ],
     "this_week": {
@@ -14290,6 +14290,102 @@
         "ccy": "CNY"
       },
       {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2026-054",
+        "contract": "KY-LB-2026022601S-HG01",
+        "model": "集成电路 eMMC 32GB;KASH6311",
+        "wh": "邦达凤岗仓",
+        "qty": 42,
+        "amt": 3469.65,
+        "price": 82.6107,
+        "amt_cny": 3469.65,
+        "amt_usd": 502.8478,
+        "price_cny": 82.6107,
+        "price_usd": 11.9726,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2026-008",
+        "contract": "KY-LB-2026010604S",
+        "model": "Small PKG eMMC 32GB;KASK62T1",
+        "wh": "邦达凤岗仓",
+        "qty": 57,
+        "amt": 3682.86,
+        "price": 64.6115,
+        "amt_cny": 3682.86,
+        "amt_usd": 533.7472,
+        "price_cny": 64.6115,
+        "price_usd": 9.364,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2026-007",
+        "contract": "KY-LB-2026010603S",
+        "model": "集成电路 eMMC 8GB；KAS03111",
+        "wh": "邦达凤岗仓",
+        "qty": 13458,
+        "amt": 379359.49,
+        "price": 28.1884,
+        "amt_cny": 379359.49,
+        "amt_usd": 54979.6358,
+        "price_cny": 28.1884,
+        "price_usd": 4.0853,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2026-006",
+        "contract": "KY-LB-2026010602S",
+        "model": "集成电路 eMMC 8GB;KAS03111",
+        "wh": "邦达凤岗仓",
+        "qty": 4215,
+        "amt": 118290.77,
+        "price": 28.0642,
+        "amt_cny": 118290.77,
+        "amt_usd": 17143.5901,
+        "price_cny": 28.0642,
+        "price_usd": 4.0673,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2025-109",
+        "contract": "KY-LB-2025120501S",
+        "model": "集成电路eMMC 8GB KAS03111",
+        "wh": "邦达凤岗仓",
+        "qty": 7330,
+        "amt": 187963.19,
+        "price": 25.643,
+        "amt_cny": 187963.19,
+        "amt_usd": 27241.042,
+        "price_cny": 25.643,
+        "price_usd": 3.7164,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2025-109",
+        "contract": "KY-LB-2025120501S",
+        "model": "集成电路eMMC 32GB KASH6311",
+        "wh": "邦达凤岗仓",
+        "qty": 1688,
+        "amt": 45533.97,
+        "price": 26.9751,
+        "amt_cny": 45533.97,
+        "amt_usd": 6599.1259,
+        "price_cny": 26.9751,
+        "price_usd": 3.9094,
+        "ccy": "CNY"
+      },
+      {
         "dir": "入",
         "date": "2026/09/11",
         "pid": "LB-2026-151",
@@ -15122,10 +15218,10 @@
     },
     "month_summary": {
       "in_amt": 36848819.91,
-      "out_amt": 95591708.25,
+      "out_amt": 96330008.18,
       "in_qty": 311481,
-      "out_qty": 1122624,
-      "cnt": 55
+      "out_qty": 1149414,
+      "cnt": 61
     },
     "week_range": {
       "start": "09/07",
@@ -15202,6 +15298,102 @@
         "amt_usd": 1222.2903,
         "price_cny": 83.503,
         "price_usd": 12.1019,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2026-054",
+        "contract": "KY-LB-2026022601S-HG01",
+        "model": "集成电路 eMMC 32GB;KASH6311",
+        "wh": "邦达凤岗仓",
+        "qty": 42,
+        "amt": 3469.65,
+        "price": 82.6107,
+        "amt_cny": 3469.65,
+        "amt_usd": 502.8478,
+        "price_cny": 82.6107,
+        "price_usd": 11.9726,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2026-008",
+        "contract": "KY-LB-2026010604S",
+        "model": "Small PKG eMMC 32GB;KASK62T1",
+        "wh": "邦达凤岗仓",
+        "qty": 57,
+        "amt": 3682.86,
+        "price": 64.6115,
+        "amt_cny": 3682.86,
+        "amt_usd": 533.7472,
+        "price_cny": 64.6115,
+        "price_usd": 9.364,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2026-007",
+        "contract": "KY-LB-2026010603S",
+        "model": "集成电路 eMMC 8GB；KAS03111",
+        "wh": "邦达凤岗仓",
+        "qty": 13458,
+        "amt": 379359.49,
+        "price": 28.1884,
+        "amt_cny": 379359.49,
+        "amt_usd": 54979.6358,
+        "price_cny": 28.1884,
+        "price_usd": 4.0853,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2026-006",
+        "contract": "KY-LB-2026010602S",
+        "model": "集成电路 eMMC 8GB;KAS03111",
+        "wh": "邦达凤岗仓",
+        "qty": 4215,
+        "amt": 118290.77,
+        "price": 28.0642,
+        "amt_cny": 118290.77,
+        "amt_usd": 17143.5901,
+        "price_cny": 28.0642,
+        "price_usd": 4.0673,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2025-109",
+        "contract": "KY-LB-2025120501S",
+        "model": "集成电路eMMC 8GB KAS03111",
+        "wh": "邦达凤岗仓",
+        "qty": 7330,
+        "amt": 187963.19,
+        "price": 25.643,
+        "amt_cny": 187963.19,
+        "amt_usd": 27241.042,
+        "price_cny": 25.643,
+        "price_usd": 3.7164,
+        "ccy": "CNY"
+      },
+      {
+        "dir": "出",
+        "date": "2026/09/14",
+        "pid": "LB-2025-109",
+        "contract": "KY-LB-2025120501S",
+        "model": "集成电路eMMC 32GB KASH6311",
+        "wh": "邦达凤岗仓",
+        "qty": 1688,
+        "amt": 45533.97,
+        "price": 26.9751,
+        "amt_cny": 45533.97,
+        "amt_usd": 6599.1259,
+        "price_cny": 26.9751,
+        "price_usd": 3.9094,
         "ccy": "CNY"
       },
       {
@@ -46201,10 +46393,10 @@
       {
         "quarter": "2026-Q3",
         "in_amt": 932488489.93,
-        "out_amt": 1223213598.85,
+        "out_amt": 1223951898.78,
         "in_qty": 16739316,
-        "out_qty": 24916574,
-        "cnt": 347
+        "out_qty": 24943364,
+        "cnt": 353
       }
     ]
   },
