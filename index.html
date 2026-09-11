@@ -2651,7 +2651,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v77';
+var APP_VER='v78';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -3617,30 +3617,60 @@ function ioNoticeForm(){
    标题 / 按钮 / 占位符 / 候选提示 / 导出图片标签全部跟随；
    程序自动带出的值按方向分别记账（_ION_PARTY_AUTO），切方向时仅在用户没手改过时替换。 */
 var _ION_PARTY_AUTO={in:'',out:''};
+/* v78：记住最近一次命中的合同行 —— 切方向时用它重刷提示文案（否则会留着上一个方向的「供方/下家」字样） */
+var _ION_LAST_HIT=null;
 function _ionPartyInfo(){
   return (_IO_NOTICE_DIR==='in')
     ? {label:'采购端供方', short:'供方', ph:'采购供方', add:'+ 新增供方'}
     : {label:'销售端下家', short:'下家', ph:'销售下家', add:'+ 新增下家'};
+}
+/* v78：对方单位输入行 HTML（供方/下家共用，占位随方向） */
+function _ionPartyRowHtml(v,i){
+  var info=_ionPartyInfo();
+  return '<div data-idx="'+i+'" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+    +'<input type="text" data-f="customer" value="'+esc(v||'')+'" placeholder="'+info.ph+'" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid var(--inp-b);border-radius:8px;background:var(--card)">'
+    +'<button type="button" class="btn sm" data-act="ionDelCustomer" data-idx="'+i+'" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'
+    +'</div>';
+}
+/* v78：按当前方向重刷「已自动匹配合同」提示（切方向后必须刷新，文案里的供方/下家要跟着换） */
+function _ionRenderHint(){
+  var hint=document.getElementById('ion_autoHint'); if(!hint) return;
+  var hit=_ION_LAST_HIT; if(!hit) return;
+  var info=_ionPartyInfo(), pv=_ionPartyVal(hit);
+  hint.style.display='inline-flex'; hint.style.color='var(--green)';
+  hint.innerHTML='✓ 已自动匹配合同：'+esc(hit.product||'')
+    +(pv?' · '+info.short+' '+esc(pv):' · 合同未填'+info.short);
 }
 /* 从 sheet2_brief 命中行里取当前方向对应的对方单位名 */
 function _ionPartyVal(hit){
   if(!hit) return '';
   return (_IO_NOTICE_DIR==='in') ? (hit.supplier||'') : (hit.customer||'');
 }
-/* 同步「对方单位」区块的文案 + 值（oldDir = 切换前的方向，仅切换时传） */
+/* 同步「对方单位」区块的文案 + 值（oldDir = 切换前的方向，仅切换时传）
+   v78：两个方向的值都在命中时就已缓存（见 ionApplyPick），切方向＝直接换数据，不用重填合同号 */
 function _ionSyncPartyUI(oldDir){
   var info=_ionPartyInfo();
   var lb=document.getElementById('ion_partyLabel'); if(lb) lb.textContent=info.label;
   var ab=document.getElementById('ion_partyAdd');  if(ab) ab.textContent=info.add;
-  var box=document.getElementById('ion_customers'); if(!box) return;
+  var cur=_IO_NOTICE_DIR==='in'?'in':'out';
+  var nextAuto=_ION_PARTY_AUTO[cur]||'';
+  var box=document.getElementById('ion_customers');
+  if(!box){ _ionRenderHint(); return; }
   var ins=Array.prototype.slice.call(box.querySelectorAll('[data-f="customer"]'));
   ins.forEach(function(el){ el.setAttribute('placeholder', info.ph); });
-  if(!oldDir || oldDir===_IO_NOTICE_DIR || !ins.length) return;
-  var prevAuto=_ION_PARTY_AUTO[oldDir]||'', nextAuto=_ION_PARTY_AUTO[_IO_NOTICE_DIR]||'';
-  /* 用户手改过（框里值不等于旧方向的自动值）→ 一律不动，避免顶掉手输 */
-  var touched=ins.some(function(el){ var v=(el.value||'').trim(); return v && v!==prevAuto; });
-  if(touched) return;
-  ins[0].value=nextAuto;   /* 静默替换：新方向有带出值就换，没有就留空 */
+  if(oldDir && oldDir!==_IO_NOTICE_DIR){
+    var prevAuto=_ION_PARTY_AUTO[oldDir==='in'?'in':'out']||'';
+    /* 用户手改过（框里值不等于旧方向的自动值）→ 一律不动，避免顶掉手输 */
+    var touched=ins.some(function(el){ var v=(el.value||'').trim(); return v && v!==prevAuto; });
+    if(!touched){
+      if(ins.length) ins[0].value=nextAuto;                          /* 静默替换：新方向有带出值就换，没有就留空 */
+      else if(nextAuto) box.innerHTML=_ionPartyRowHtml(nextAuto,0);  /* 一行都没有 → 补建一行带出 */
+    }
+  }
+  _ionRenderHint();
+  /* 还没反查过任何合同（用户可能先选方向再填号，或开单后立刻切方向）→ 补查一次，
+     保证切过来就能看到数据；仅当框里没有任何用户内容时才补查，避免覆盖手输 */
+  if(!_ION_LAST_HIT && !ins.some(function(el){ return (el.value||'').trim(); })) ionAutoFill();
 }
 /* 预通知：通知方向切换 */
 function ionDirChange(d){
@@ -3813,23 +3843,21 @@ function ionApplyPick(hit,type,fromPick){
       ionPreviewPid();
     }
   }
-  /* 对方单位：入库取采购端供方 / 出库取销售端下家（无则填一个空行） */
-  var _pi=_ionPartyInfo(), _pv=_ionPartyVal(hit);
-  _ION_PARTY_AUTO[_IO_NOTICE_DIR==='in'?'in':'out']=_pv||'';
+  /* 对方单位：入库取采购端供方 / 出库取销售端下家。
+     ⭐ v78：两个方向的值**同时**缓存 → 切方向直接换数据，无需重填合同号重新反查 */
+  _ION_LAST_HIT=hit;
+  _ION_PARTY_AUTO.in=hit.supplier||'';
+  _ION_PARTY_AUTO.out=hit.customer||'';
+  var _pv=_ionPartyVal(hit);
   if(_pv){
     var cbox=document.getElementById('ion_customers');
-    if(cbox && (fromPick || !cbox.querySelector('[data-f="customer"]'))){
-      cbox.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
-        '<input type="text" data-f="customer" value="'+esc(_pv)+'" placeholder="'+_pi.ph+'" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid var(--inp-b);border-radius:8px;background:var(--card)">'+
-        '<button type="button" class="btn sm" data-act="ionDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'+
-      '</div>';
+    if(cbox){
+      var first=cbox.querySelector('[data-f="customer"]');
+      if(!first || fromPick) cbox.innerHTML=_ionPartyRowHtml(_pv,0);
+      else if(!String(first.value||'').trim()) first.value=_pv;   /* 已有空行 → 填进去（旧版会漏填） */
     }
   }
-  var hint=document.getElementById('ion_autoHint');
-  if(hint){
-    hint.style.display='inline-flex'; hint.style.color='var(--green)';
-    hint.innerHTML='✓ 已自动匹配合同：'+esc(hit.product||'')+(_pv?' · '+_pi.short+' '+esc(_pv):'');
-  }
+  _ionRenderHint();
   ionLoadProductOptions([hit]);
 }
 /* 预通知：把 sheet2_brief 中匹配到的产品填到 #ion_product */
@@ -5897,6 +5925,7 @@ document.addEventListener('click',function(e){
     _IO_NOTICE_ROWS=[_ionRowBlank()];
     _IO_NOTICE_DIR='in'; // 默认入库方向
     _ION_PARTY_AUTO={in:'',out:''}; // v77：对方单位自动带出值按方向各存一份，开单时清空
+    _ION_LAST_HIT=null;             // v78：最近命中的合同行（切方向重刷提示用）
     openModal('出入库预通知（生成图片通知）',ioNoticeForm(),'',null,{icon:'paper',okText:'',cancelText:''});
     /* 自定义底部按钮已内嵌（取消/下载图片·保存/下载图片·复制/保存至新增出入库） → 隐藏默认 mfoot */
     var mf=document.querySelector('#mask .mfoot');
@@ -6316,7 +6345,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v77.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v78.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
