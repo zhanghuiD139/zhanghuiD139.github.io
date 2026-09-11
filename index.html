@@ -2494,6 +2494,15 @@ function askDangerPwd(onOk){
 }
 function val(id){var e=document.getElementById(id);return e?e.value.trim():''}
 function val_set(id,v){var e=document.getElementById(id); if(e){ e.value=v; e.dispatchEvent(new Event('input',{bubbles:true})); e.dispatchEvent(new Event('change',{bubbles:true})); }}
+/* v76：程序回填专用（不派发事件）。
+   为什么必须静默：采购/销售合同号互相联动，若回填写另一侧会触发那边的 oninput → 又反查回来。
+   一个采购合同号可能对应多个销售合同号（多义数据），来回写就会把用户刚输入的值顶掉。
+   程序推导出的值不需要再走一遍"用户输入"逻辑，静默写入即可。 */
+function set_silent(id,v){
+  if(v==null) return;
+  var e=document.getElementById(id); if(!e) return;
+  if(String(e.value)!==String(v)) e.value=v;
+}
 
 function todoForm(t){
   t=t||{title:'',date:today(),pri:'P1',from:'自建',note:''};
@@ -2642,7 +2651,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v75';
+var APP_VER='v76';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -3119,9 +3128,11 @@ function ioFrmLoadProductOptions(records){
   sel.innerHTML=opts.join('');
   if(cur){ sel.value=cur; }
 }
-/* 项目号/合同号 250ms debounce 反查 sheet2_brief（项目号是权威来源 → 改项目号覆盖 buy/sale/customer） */
+/* 项目号/合同号 250ms debounce 反查 sheet2_brief（项目号是权威来源 → 改项目号覆盖 buy/sale/customer）
+   v76：新增 src 参数。src='buy'|'sale' 时不再写提示（该输入框的提示由 ioFrmContractInput 接管，
+   避免 debounce 回写把「找到 N 个候选」的提示覆盖掉）。 */
 var _IOF_AF_DEBOUNCE=null;
-function ioFrmAutoFill(){
+function ioFrmAutoFill(src){
   clearTimeout(_IOF_AF_DEBOUNCE);
   _IOF_AF_DEBOUNCE=setTimeout(function(){
     var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
@@ -3142,8 +3153,10 @@ function ioFrmAutoFill(){
       /* 把归一化后的项目号写回 input（让用户看到） */
       if(normNo){ var inp=document.getElementById('ioForm_noInp'); if(inp && inp.value!==normNo){ inp.value=normNo; previewIoFormPid(); } }
       if(matchedById){
-        if(hit.buy && val('ioForm_buy')!==hit.buy){ val_set('ioForm_buy', hit.buy); }
-        if(hit.sale && val('ioForm_sale')!==hit.sale){ val_set('ioForm_sale', hit.sale); }
+        /* v76：src='buy'|'sale' 表示用户正在手输合同号（意图是用合同号反查项目号），
+           此时不得回写该输入框，否则用户刚敲的字符会被项目号反查结果顶掉。 */
+        if(src!=='buy' && hit.buy && val('ioForm_buy')!==hit.buy){ set_silent('ioForm_buy', hit.buy); }
+        if(src!=='sale' && hit.sale && val('ioForm_sale')!==hit.sale){ set_silent('ioForm_sale', hit.sale); }
         if(hit.customer){
           var box=document.getElementById('ioForm_customers');
           if(box){
@@ -3154,11 +3167,12 @@ function ioFrmAutoFill(){
           }
         }
       } else {
-        if(!val('ioForm_buy') && hit.buy){ val_set('ioForm_buy', hit.buy); }
-        if(!val('ioForm_sale') && hit.sale){ val_set('ioForm_sale', hit.sale); }
+        if(!val('ioForm_buy') && hit.buy){ set_silent('ioForm_buy', hit.buy); }
+        if(!val('ioForm_sale') && hit.sale){ set_silent('ioForm_sale', hit.sale); }
         if(hit.customer){
           var box=document.getElementById('ioForm_customers');
-          if(box && !box.querySelector('[data-idx="0"] input[data-f="customer"]').value){
+          var c0=box?box.querySelector('[data-idx="0"] input[data-f="customer"]'):null;
+          if(box && !(c0&&c0.value)){
             box.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
               +'<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid var(--inp-b);border-radius:8px;background:var(--card)">'
               +'<button type="button" class="btn sm" data-act="ioFrmDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'
@@ -3166,14 +3180,119 @@ function ioFrmAutoFill(){
           }
         }
       }
-      if(hint){ hint.style.display='inline-flex'; hint.style.color='var(--green)';
+      if(hint && src!=='buy' && src!=='sale'){ hint.style.display='inline-flex'; hint.style.color='var(--green)';
         hint.innerHTML='✓ 已自动匹配合同：'+esc(hit.product||'')+(hit.customer?' · 下家 '+esc(hit.customer):''); }
       ioFrmLoadProductOptions([hit]);
     } else {
-      if(hint){ hint.style.display='inline-flex'; hint.style.color='var(--t3)';
-        hint.innerHTML='未匹配到合同（项目号/合同号可能尚无记录）'; }
+      /* 合同号输入框的提示由 ioFrmContractInput 负责，这里不回写，避免覆盖候选提示 */
+      if(hint && src!=='buy' && src!=='sale'){
+        hint.style.display='inline-flex'; hint.style.color='var(--t3)';
+        hint.innerHTML='未匹配到合同（项目号/合同号可能尚无记录）';
+      }
     }
   }, 250);
+}
+/* ===== v76：出入库录入（流水）表单 —— 合同号「输入不弹窗，Enter 出内联候选」 =====
+   与预通知（ion_*）保持同一套交互：输入过程中只在输入框下方给文字提示，
+   按 Enter 才在该输入框正下方展开候选列表（内联，不占用模态栈 → 点选后表单不会消失）。
+   搜索复用 ionContractSearch（完整相等 > 前缀 > 中间命中）。 */
+var _IOF_PICK_HITS=[];
+function ioFrmContractInput(type){
+  var box=document.getElementById('ioForm_'+type+'_list');
+  if(box) box.innerHTML='';                       /* 继续输入即收起旧候选 */
+  ioFrmAutoFill(type);                            /* 保留原有联动（精确匹配时带出另一侧 + 下家 + 产品） */
+  var hint=document.getElementById('ioForm_'+type+'_hint');
+  if(!hint) return;
+  var q=(val('ioForm_'+type)||'').trim();
+  if(q.length<2){ hint.style.display='none'; return; }   /* <2 字符不搜索，避免 "0" 命中数百条 */
+  var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
+  if(!sb.length){
+    hint.style.display='inline-flex'; hint.style.color='var(--t3)';
+    hint.innerHTML='合同数据尚未加载完成，请稍候再试';
+    return;
+  }
+  var hits=ionContractSearch(sb,type,q);
+  if(!hits.length){
+    hint.style.display='inline-flex'; hint.style.color='var(--t3)';
+    hint.innerHTML='未匹配到合同，可继续输入或核对编号';
+    return;
+  }
+  var i0=hits[0];
+  if(i0 && String(i0[type]||'').toLowerCase()===q.toLowerCase()){
+    hint.style.display='inline-flex'; hint.style.color='var(--green)';
+    hint.innerHTML='✓ 已匹配：'+esc(i0.pid||'')+(i0.product?' · '+esc(i0.product):'');
+    ioFrmApplyPick(i0,type,true);
+    return;
+  }
+  hint.style.display='inline-flex'; hint.style.color='var(--ac)';
+  hint.innerHTML='找到 '+hits.length+' 个候选，按 <b>Enter</b> 选择';
+}
+/* Enter：唯一命中直接填入；多条则在输入框下方展开候选 */
+function ioFrmContractKey(e,type){
+  if(e.key!=='Enter' && e.keyCode!==13) return;
+  e.preventDefault();
+  var q=(val('ioForm_'+type)||'').trim();
+  if(!q){ toast('请先输入合同号'); return; }
+  var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
+  if(!sb.length){ toast('合同数据尚未加载完成，请稍候再试'); return; }
+  var hits=ionContractSearch(sb,type,q);
+  if(!hits.length){ toast('未匹配到合同：'+q); return; }
+  if(hits.length===1){ ioFrmApplyPick(hits[0],type,true); toast('已填入：'+(type==='buy'?hits[0].buy:hits[0].sale)); return; }
+  ioFrmShowPickList(hits,type);
+}
+function ioFrmShowPickList(hits,type){
+  var box=document.getElementById('ioForm_'+type+'_list');
+  if(!box) return;
+  _IOF_PICK_HITS=hits;
+  var MAX=50, list=hits.slice(0,MAX);
+  box.innerHTML='<div style="margin-top:6px;border:1px solid var(--ac-l);border-radius:10px;background:var(--card);max-height:240px;overflow:auto">'
+    +'<div style="padding:7px 10px;font-size:11.5px;color:var(--t3);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)">找到 '+hits.length+' 条'+(hits.length>MAX?'（显示前 '+MAX+' 条，继续输入可缩小）':'')+' · 点击填入</div>'
+    +list.map(function(r,i){
+      var no=type==='buy'? r.buy : r.sale;
+      return '<div data-act="ioFrmPickInline" data-idx="'+i+'" data-type="'+type+'" '
+        +'style="padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer">'
+        +'<div style="font-weight:700;font-size:13px;color:var(--t1);word-break:break-all">'+esc(no||'-')+'</div>'
+        +'<div style="font-size:11.5px;color:var(--t2);margin-top:3px;line-height:1.5">'
+          +'项目：'+esc(r.pid||'-')
+          +(r.customer?' · 下家 '+esc(r.customer):'')
+          +(r.product?' · '+esc(r.product):'')
+        +'</div></div>';
+    }).join('')+'</div>';
+}
+/* 回填：合同号 + 项目号三段 + 销售下家 + 产品下拉（点选时覆盖，静默时只填空） */
+function ioFrmApplyPick(hit,type,fromPick){
+  if(!hit) return;
+  if(hit.buy)  set_silent('ioForm_buy',  hit.buy);
+  if(hit.sale) set_silent('ioForm_sale', hit.sale);
+  if(hit.pid){
+    var parts=hit.pid.split('-');   /* ['LB','2026','J','091'] */
+    if(parts.length>=3){
+      var selY=document.getElementById('ioForm_yearSel');
+      var wantY=parts[1]||'2026';
+      if(selY && (fromPick || !val('ioForm_yearSel')) && Array.from(selY.options).some(function(o){return o.value===wantY})) set_silent('ioForm_yearSel', wantY);
+      var wantMode=parts[2]==='J'?'外贸（J）':'内贸';
+      if(fromPick || !val('ioForm_modeSel')) set_silent('ioForm_modeSel', wantMode);
+      var wantNo=parts.slice(parts[2]==='J'?3:2).join('-')||hit.no||'';
+      if(fromPick || !val('ioForm_noInp')) set_silent('ioForm_noInp', wantNo);
+      previewIoFormPid();
+    }
+  }
+  if(hit.customer){
+    var cbox=document.getElementById('ioForm_customers');
+    var c0=cbox?cbox.querySelector('[data-idx="0"] input[data-f="customer"]'):null;
+    if(cbox && (fromPick || !(c0&&c0.value))){
+      cbox.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'
+        +'<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid var(--inp-b);border-radius:8px;background:var(--card)">'
+        +'<button type="button" class="btn sm" data-act="ioFrmDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'
+        +'</div>';
+    }
+  }
+  var hint=document.getElementById('ioForm_autoHint');
+  if(hint){
+    hint.style.display='inline-flex'; hint.style.color='var(--green)';
+    hint.innerHTML='✓ 已自动匹配合同：'+esc(hit.product||'')+(hit.customer?' · 下家 '+esc(hit.customer):'');
+  }
+  ioFrmLoadProductOptions([hit]);
 }
 /* 手动加载产品（用户主动点按钮） */
 function ioFrmLoadProduct(){
@@ -3262,9 +3381,13 @@ function ioFormV9(t){
   +'<div style="margin-bottom:12px"><label class="fl">采购合同号 / 销售合同号</label>'
     +'<div style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">'
       +'<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--t2);margin-bottom:3px">采购合同号</div>'
-        +'<input type="text" id="ioForm_buy" oninput="ioFrmAutoFill()" value="'+esc(t.buy||'')+'" placeholder="填一个带出全部" style="height:36px;font-size:13px;padding:0 10px;border:1px solid var(--inp-b);border-radius:8px;width:100%;background:var(--card);box-sizing:border-box"></div>'
+        +'<input type="text" id="ioForm_buy" oninput="ioFrmContractInput(\'buy\')" onkeydown="ioFrmContractKey(event,\'buy\')" autocomplete="off" value="'+esc(t.buy||'')+'" placeholder="输入后按 Enter 选择" style="height:36px;font-size:13px;padding:0 10px;border:1px solid var(--inp-b);border-radius:8px;width:100%;background:var(--card);box-sizing:border-box">'
+        +'<div id="ioForm_buy_hint" class="srcline" style="display:none;margin-top:4px"></div>'
+        +'<div id="ioForm_buy_list"></div></div>'
       +'<div style="flex:1;min-width:0"><div style="font-size:11px;color:var(--t2);margin-bottom:3px">销售合同号</div>'
-        +'<input type="text" id="ioForm_sale" oninput="ioFrmAutoFill()" value="'+esc(t.sale||'')+'" placeholder="同上联动" style="height:36px;font-size:13px;padding:0 10px;border:1px solid var(--inp-b);border-radius:8px;width:100%;background:var(--card);box-sizing:border-box"></div>'
+        +'<input type="text" id="ioForm_sale" oninput="ioFrmContractInput(\'sale\')" onkeydown="ioFrmContractKey(event,\'sale\')" autocomplete="off" value="'+esc(t.sale||'')+'" placeholder="输入后按 Enter 选择" style="height:36px;font-size:13px;padding:0 10px;border:1px solid var(--inp-b);border-radius:8px;width:100%;background:var(--card);box-sizing:border-box">'
+        +'<div id="ioForm_sale_hint" class="srcline" style="display:none;margin-top:4px"></div>'
+        +'<div id="ioForm_sale_list"></div></div>'
     +'</div>'
   +'</div>'
   /* ===== 3. 销售端下家 ===== */
@@ -3641,16 +3764,18 @@ function ionShowPickList(hits,type){
 /* v75：回填。fromPick=用户明确点选（可覆盖），否则只填空（静默联动） */
 function ionApplyPick(hit,type,fromPick){
   if(!hit) return;
-  if(hit.buy)  val_set('ion_buy',  hit.buy);
-  if(hit.sale) val_set('ion_sale', hit.sale);
+  if(hit.buy)  set_silent('ion_buy',  hit.buy);
+  if(hit.sale) set_silent('ion_sale', hit.sale);
   /* 项目号（只填空；点选时覆盖 —— 换合同等于换项目） */
   if(hit.pid){
     var parts=hit.pid.split('-');   /* ['LB','2026','J','091'] */
     if(parts.length>=3){
-      if(fromPick || !val('ion_year')) val_set('ion_year', parts[1]||'2026');
+      var selY=document.getElementById('ion_year');
+      var wantY=parts[1]||'2026';
+      if(selY && (fromPick || !val('ion_year')) && Array.from(selY.options).some(function(o){return o.value===wantY})) set_silent('ion_year', wantY);
       var wantMode=parts[2]==='J'?'外贸（J）':'内贸';
-      if(fromPick || !val('ion_mode')) val_set('ion_mode', wantMode);
-      if(fromPick || !val('ion_no')) val_set('ion_no', parts.slice(parts[2]==='J'?3:2).join('-')||hit.no||'');
+      if(fromPick || !val('ion_mode')) set_silent('ion_mode', wantMode);
+      if(fromPick || !val('ion_no')) set_silent('ion_no', parts.slice(parts[2]==='J'?3:2).join('-')||hit.no||'');
       ionPreviewPid();
     }
   }
@@ -5755,6 +5880,20 @@ document.addEventListener('click',function(e){
   if(act==='ioFrmDelCustomer'){ ioFrmDelCustomer(+id); return; }
   if(act==='ioFrmLoadProduct'){ ioFrmLoadProduct(); return; }
   if(act==='ioFrmConfirmProduct'){ ioFrmConfirmProduct(); return; }
+  if(act==='ioFrmPickInline'){
+    /* v76：出入库流水表单的内联候选点选（与预通知同款，注意读 data-idx 而非 data-id） */
+    var _ifx=+(el.getAttribute('data-idx'));
+    var _ift=el.getAttribute('data-type')||'buy';
+    var _ifp=_IOF_PICK_HITS[_ifx];
+    if(_ifp){
+      ioFrmApplyPick(_ifp,_ift,true);
+      var _ilb=document.getElementById('ioForm_'+_ift+'_list'); if(_ilb) _ilb.innerHTML='';
+      var _ihb=document.getElementById('ioForm_'+_ift+'_hint');
+      if(_ihb){ _ihb.style.display='inline-flex'; _ihb.style.color='var(--green)'; _ihb.innerHTML='✓ 已填入：'+esc(_ift==='buy'?_ifp.buy:_ifp.sale); }
+      toast('已填入 '+(_ifp.pid||''));
+    }
+    return;
+  }
   /* —— 预通知：两步保存流程 —— */
   if(act==='ionSave'){ ionOnOk(); return; }
   if(act==='ionConfirmOk'){ ionConfirmOk(); return; }
@@ -6139,7 +6278,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v75.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v76.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
