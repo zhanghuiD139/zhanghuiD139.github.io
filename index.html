@@ -635,7 +635,7 @@ function mascot(kind){
 
 /* ================= 数据层 ================= */
 var DEF_KW=['豆包','WorkBuddy','DeepSeek','即梦','千问','扣子','飞书','Kimi','钉钉','微信','供应链','仓储','物流','WMS','无人仓','智能分拣'];
-var state={tab:'home',calMonth:'',calSel:'',newsFilter:'全部',ideaFilter:'全部',ioRange:'本周',ioWh:'全部',v9sub:'inv',v9ioRange:'week',v9ioDir:'all',v9ioFrom:'',v9ioTo:'',v9ioPid:'',v9ioWh:'全部',qDetailDim:'pid',qDetailMatch:'模糊',qDetailMode:'内贸',qDetailYear:'2026',qDetailNoPid:'',qDetailNoBuy:'',qDetailNoSale:'',qDetailNoSup:'',qDetailNoCust:'',qDetailResult:null,ioFormStep:'form',ioFormDraft:null,v9ioLive:null,v9ioLiveAt:0,v9ioLiveLoading:false,v9ioLiveErr:'',learn:null,learnLoading:false,learnErr:'',learnOpenCat:'',learnHistOpen:false,v9ioOpen:false};
+var state={tab:'home',calMonth:'',calSel:'',newsFilter:'全部',ideaFilter:'全部',ioRange:'本周',ioWh:'全部',v9sub:'inv',v9ioRange:'week',v9ioDir:'all',v9ioFrom:'',v9ioTo:'',v9ioPid:'',v9ioWh:'全部',v9ioSort:'date',v9ioSortDir:'desc',qDetailDim:'pid',qDetailMatch:'模糊',qDetailMode:'内贸',qDetailYear:'2026',qDetailNoPid:'',qDetailNoBuy:'',qDetailNoSale:'',qDetailNoSup:'',qDetailNoCust:'',qDetailResult:null,ioFormStep:'form',ioFormDraft:null,v9ioLive:null,v9ioLiveAt:0,v9ioLiveLoading:false,v9ioLiveErr:'',learn:null,learnLoading:false,learnErr:'',learnOpenCat:'',learnHistOpen:false,v9ioOpen:false};
 
 function getTodos(){return LS(K.todo,[])} function setTodos(v){SS(K.todo,v)}
 function getNews(){return LS(K.news,[])}  function setNews(v){SS(K.news,v)}
@@ -1396,6 +1396,22 @@ function v9Io(mode){
   if(dirF!=='all') pool=pool.filter(function(x){return x.dir===(dirF==='in'?'入':'出')});
   if(whF!=='全部') pool=pool.filter(function(x){return whName(x.wh)===whF});
   if(vPid) pool=pool.filter(function(x){return (x.pid||'').indexOf(vPid)>-1});
+  /* 明细排序（v74）：默认按日期倒序（最新在前）；点表头「项目号」→ 相同项目号聚在一起。
+     - 项目号键做自然排序：解析出「年份 + 末尾序号」补零，避免 LB-2026-39 排在 LB-2026-151 之后
+     - 主键相同 → 次键日期倒序（同项目内仍是新的在前）
+     - 排序只影响明细展示顺序，不改统计口径（summary 与顺序无关） */
+  var _sortKey=state.v9ioSort||'date', _sortAsc=(state.v9ioSortDir||'desc')==='asc';
+  function _pidKey(s){
+    var m=String(s||'').match(/(\d{4})[\s\S]*?(\d+)\s*$/);
+    return m ? (m[1]+'-'+('000000'+m[2]).slice(-6)) : String(s||'').toUpperCase();
+  }
+  pool=pool.slice().sort(function(a,b){
+    var ka=_sortKey==='pid'?_pidKey(a.pid):nd(a.date);
+    var kb=_sortKey==='pid'?_pidKey(b.pid):nd(b.date);
+    if(ka!==kb) return (ka<kb?-1:1)*(_sortAsc?1:-1);
+    var da=nd(a.date), db=nd(b.date);
+    return da<db?1:(da>db?-1:0);
+  });
   /* 统计汇总：v69 起，实时数据优先用服务端 summary（按当前 方向/日期/仓库 过滤后的全量精确汇总，
      不受 5000 截断影响，sheet3 超量时统计仍准）；cache/fallback 模式退化为对 pool 求和（含 is_update 排除）。 */
   var ssum;
@@ -1452,6 +1468,12 @@ function v9Io(mode){
          /* stat + 明细表 */
          (function(){
            var det=pool.slice(0,300), ds=ssum;
+           /* 可排序表头（v74）：日期 / 项目号 两列可点，点击切换升/降序 */
+           var _th=function(key,label,cls){
+             var on=(state.v9ioSort||'date')===key;
+             var ar=on?((state.v9ioSortDir||'desc')==='asc'?'↑':'↓'):'⇅';
+             return '<th'+(cls?' class="'+cls+'"':'')+'><span data-act="v9ioSort" data-v="'+key+'" title="点击按'+label+'排序，再点切换升/降序" style="cursor:pointer;user-select:none;white-space:nowrap;display:inline-block;'+(on?'color:var(--ac);font-weight:800':'')+'">'+label+'<span style="font-size:11px;margin-left:3px;opacity:'+(on?'1':'0.4')+'">'+ar+'</span></span></th>';
+           };
            var head='<div class="stat" style="margin:10px 0"><div class="s g"><b>'+fmtCNY(ds.in_amt)+'</b><span>入库</span></div>'+
              '<div class="s r"><b>'+fmtCNY(ds.out_amt)+'</b><span>出库</span></div>'+
              '<div class="s"><b>'+ds.cnt+'</b><span>笔数</span><em style="color:var(--green-t)">入 '+ds.in_cnt+' 笔</em><em style="color:#E03A3F">出 '+ds.out_cnt+' 笔</em></div>'+
@@ -1484,8 +1506,8 @@ function v9Io(mode){
              var pdCell = priceUsd ? '$'+(+priceUsd).toFixed(4) : '<span class="muted">—</span>';
              return '<tr'+(r.pid?' data-act="v9ioGoDetail" data-pid="'+esc(r.pid)+'" style="cursor:pointer" title="点击查看 '+esc(r.pid)+' 的合同详情"':'')+'><td>'+esc(r.date)+'</td><td>'+dir+'</td><td>'+(r.pid?'<b style="color:var(--ac)">'+esc(r.pid)+'</b>':esc(r.pid||''))+'</td><td>'+ctr+'</td><td class="model" title="'+esc(r.model||'')+'">'+mdl+'</td><td>'+esc(r.wh)+'</td><td class="num">'+qtyCell+'</td><td class="num">'+amtCell+'</td><td class="num">'+pcCell+'</td><td class="num">'+pdCell+'</td></tr>';
            }).join('');
-           var body=det.length?('<div class="tbl-scroll"><table class="v9tbl v9io"><thead><tr><th>日期</th><th>方向</th><th>项目号</th><th>合同号</th><th>型号 / 产品</th><th>仓库</th><th class="num">数量</th><th class="num">金额</th><th class="num">单价(¥)</th><th class="num">单价($)</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-              (pool.length>300?'<div class="srcline" style="margin-top:8px">共 '+pool.length+' 笔，表格仅显示最新 300 笔（上方汇总为全部）；缩小日期范围可看完整明细</div>':''))
+           var body=det.length?('<div class="tbl-scroll"><table class="v9tbl v9io"><thead><tr>'+_th('date','日期')+'<th>方向</th>'+_th('pid','项目号')+'<th>合同号</th><th>型号 / 产品</th><th>仓库</th><th class="num">数量</th><th class="num">金额</th><th class="num">单价(¥)</th><th class="num">单价($)</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+              (pool.length>300?'<div class="srcline" style="margin-top:8px">共 '+pool.length+' 笔，表格仅显示'+(state.v9ioSort==='pid'?'前 300 笔（按项目号排序）':'最新 300 笔')+'（上方汇总为全部）；缩小日期范围可看完整明细</div>':''))
              :'<div class="empty" style="padding:20px">当前查询条件下暂无出入库明细'+
               (rr==='week'?'<br><span style="font-size:12px;color:var(--t3)">今天是本周第 '+(wr.days||0)+' 天，V9.1 暂无新录入；可点「上周」或用上方日期自定义查询</span>':'')+'</div>';
            return head+body;
@@ -2620,7 +2642,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v73';
+var APP_VER='v74';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5802,7 +5824,14 @@ document.addEventListener('click',function(e){
     state.v9ioRange=(!state.v9ioFrom && !state.v9ioTo && !state.v9ioPid)?'all':'custom';
     render(); v9ioFetchLive(v9ioBuildParams()); return;
   }
-  if(act==='v9ioReset'){state.v9ioRange='week';state.v9ioDir='all';state.v9ioFrom='';state.v9ioTo='';state.v9ioPid='';state.v9ioWh='全部';render();v9ioFetchLive(v9ioBuildParams());return}
+  if(act==='v9ioReset'){state.v9ioRange='week';state.v9ioDir='all';state.v9ioFrom='';state.v9ioTo='';state.v9ioPid='';state.v9ioWh='全部';state.v9ioSort='date';state.v9ioSortDir='desc';render();v9ioFetchLive(v9ioBuildParams());return}
+  /* v74：明细表头排序 —— 点「日期」/「项目号」切换排序键；同一列再点切换升/降序（新键默认 日期降序 / 项目号升序） */
+  if(act==='v9ioSort'){
+    var _sk=el.getAttribute('data-v')||'date';
+    if((state.v9ioSort||'date')===_sk){ state.v9ioSortDir=((state.v9ioSortDir||'desc')==='asc'?'desc':'asc'); }
+    else { state.v9ioSort=_sk; state.v9ioSortDir=(_sk==='date'?'desc':'asc'); }
+    render(); return;
+  }
   if(act==='v9ioRefresh'){render();v9ioFetchLive(v9ioBuildParams());return}
   if(act==='gotoV9Io'){state.tab='v9';state.v9sub='io';render();return}
   /* 详情查询：切档 / 查 / 重置（辉哥参照 V9.1 大屏详情查询） */
@@ -6069,7 +6098,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v73.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v74.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
