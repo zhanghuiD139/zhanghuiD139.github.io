@@ -1239,7 +1239,7 @@ function pageExtHub(hub){
   /* 半月报（2026-09-11 新增）：选期间 → 服务端按既定口径生成 Word */
   '<button data-act="v9DlHalfMonth" class="card ext-hub-card" style="display:flex;align-items:center;gap:14px;padding:18px 22px;width:320px;max-width:90vw;border:1px dashed var(--green-t);border-radius:14px;background:rgba(46,204,113,0.08);cursor:pointer;font-family:inherit">'+
     '<div style="width:48px;height:48px;border-radius:12px;background:linear-gradient(135deg,#2ecc71,var(--green-t));color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+ic('doc','#fff',22)+'</div>'+
-    '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">半月报 · 下载 Word</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">选年/月/旬 → 按口径生成 Word 半月报</div></div>'+
+    '<div style="flex:1;min-width:0;text-align:left"><div style="font-size:16px;font-weight:700;color:var(--t1)">半月报 · 下载 Word</div><div style="font-size:11.5px;color:var(--t3);margin-top:2px">选起止日期 → 按该区间生成 Word 半月报</div></div>'+
     '<div style="color:var(--green-t);font-size:22px;font-weight:700">⬇</div>'+
   '</button>'+
   '</div>';
@@ -2603,7 +2603,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v71';
+var APP_VER='v72';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5044,28 +5044,42 @@ async function v9DlXlsx(){
 }
 /* ===== 半月报 Word 下载（2026-09-11 新增）=====
    v9DlHalfMonth → 弹模态选年/月/旬 → 调用 server /api/half-month-report → 下载 Word */
+function _hmLabel(from,to){
+  /* 由起止日期生成期间文字：上旬 / 下旬 / 整月 / 自定义区间 */
+  var a=String(from).split('-'), b=String(to).split('-');
+  var y1=+a[0], m1=+a[1], d1=+a[2], y2=+b[0], m2=+b[1], d2=+b[2];
+  var lastDay=new Date(y1,m1,0).getDate();
+  if(y1===y2&&m1===m2){
+    if(d1===1&&d2===15) return y1+'年'+m1+'月上旬';
+    if(d1===16&&d2===lastDay) return y1+'年'+m1+'月下旬';
+    if(d1===1&&d2===lastDay) return y1+'年'+m1+'月';
+    return y1+'年'+m1+'月'+d1+'日至'+d2+'日';
+  }
+  return y1+'年'+m1+'月'+d1+'日至'+y2+'年'+m2+'月'+d2+'日';
+}
 function v9DlHalfMonth(){
   var wh=getV9ioWebhook();
   if(!wh||!wh.url){ toast('请先在「数据 & 设置」配置 V9.1 直写通道'); return; }
-  var now=new Date();
-  var dfltHalf=now.getDate()<=15?'上':'下';
+  var pad2=function(n){return (n<10?'0':'')+n};
+  var fmtD=function(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())};
+  var now=new Date(), y=now.getFullYear(), m=now.getMonth()+1;
+  var lastDay=new Date(y,m,0).getDate();
+  /* 默认：本旬（今天≤15号 → 1-15日；否则 16-月末） */
+  var dFrom,dTo;
+  if(now.getDate()<=15){ dFrom=new Date(y,m-1,1); dTo=new Date(y,m-1,15); }
+  else { dFrom=new Date(y,m-1,16); dTo=new Date(y,m-1,lastDay); }
   var body=
-    '<div class="form-row"><label class="fl">年份</label><input type="number" id="hmYear" value="'+now.getFullYear()+'"></div>'+
-    '<div class="form-row"><label class="fl">月份</label><input type="number" id="hmMonth" min="1" max="12" value="'+(now.getMonth()+1)+'"></div>'+
-    '<div class="form-row"><label class="fl">旬</label><select id="hmHalf">'+
-      '<option value="上" '+(dfltHalf==='上'?'selected':'')+'>上旬（1-15日）</option>'+
-      '<option value="下" '+(dfltHalf==='下'?'selected':'')+'>下旬（16日-月末）</option>'+
-    '</select></div>'+
-    '<p class="srcline" style="margin-top:10px">按既定口径生成 Word：出入库（区间）+ 在仓库存（截至日）+ 延期/逾期分析。</p>';
+    '<div class="form-row"><label class="fl">日期</label><input type="date" id="hmFrom" value="'+fmtD(dFrom)+'"></div>'+
+    '<div class="form-row"><label class="fl">至</label><input type="date" id="hmTo" value="'+fmtD(dTo)+'"></div>'+
+    '<p class="srcline" style="margin-top:10px">出入库严格按所选区间统计；在仓库存取当前时点快照（不含历史回溯）。<br>一般选半月（1-15日 / 16日-月末），也可选整月或任意区间。</p>';
   openModal('半月报 · 选择期间', body, '生成 Word', function(){
-    var y=parseInt(val('hmYear')||0,10);
-    var m=parseInt(val('hmMonth')||0,10);
-    var h=val('hmHalf');
-    if(!y||!m||m<1||m>12){ toast('请选择有效的年份和月份'); return false; }
-    toast('正在拉取 V9.1 数据并生成半月报…');
+    var vFrom=val('hmFrom'), vTo=val('hmTo');
+    if(!vFrom||!vTo){ toast('请选择起始与结束日期'); return false; }
+    if(vFrom>vTo){ toast('起始日期不能晚于结束日期'); return false; }
+    toast('正在按所选区间生成半月报…');
     setTimeout(function(){
       var url=wh.url.replace(/\/+$/,'')+'/api/half-month-report';
-      _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify({year:y,month:m,half:h})})
+      _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify({from:vFrom,to:vTo})})
         .then(function(r){
           if(!r.ok){
             return r.text().then(function(t){ throw new Error('HTTP '+r.status+' '+(t||'')); });
@@ -5073,7 +5087,7 @@ function v9DlHalfMonth(){
           return r.blob();
         })
         .then(function(blob){
-          var name='半月报_'+y+'年'+m+'月'+h+'旬.docx';
+          var name='半月报_'+_hmLabel(vFrom,vTo)+'.docx';
           var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
           document.body.appendChild(a); a.click(); a.remove();
           setTimeout(function(){URL.revokeObjectURL(a.href)},2500);
@@ -6038,7 +6052,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v71.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v72.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
