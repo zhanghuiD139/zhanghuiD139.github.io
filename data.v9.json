@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-09-11 14:02",
+  "generated_at": "2026-09-11 14:47",
   "source": "V9.1 物管数据平台 · 金山文档 V9.1.dbt",
   "file_id": "ELFCsW2891MbaXXvTwfgrxXYUwP6h6tYF",
   "inventory": {
     "total_amt": 1753658146.95,
     "total_qty": 24515447.0,
     "done": 431,
-    "todo": 333,
+    "todo": 334,
     "overdue": 209,
     "by_warehouse": [
       {
@@ -85,7 +85,7 @@
       {
         "type": "晶圆",
         "amt": 331670522.38,
-        "cnt": 174
+        "cnt": 175
       },
       {
         "type": "稀散金属",
@@ -662,7 +662,7 @@
       },
       "LB-2026": {
         "amt": 1719468702.25,
-        "cnt": 422,
+        "cnt": 423,
         "overdue": 183
       }
     },
@@ -12794,6 +12794,22 @@
         "product": "晶圆 KRN09TC1S2DU1C 长江存储",
         "ptype": "晶圆",
         "contractQty": 2200000.0
+      },
+      {
+        "pid": "LB-2026-157",
+        "sale": "XYC-LB-2026090801S",
+        "buy": "HY-LB-2026090801B",
+        "supplier": "鸿盈科技实业(深圳)有限公司",
+        "customer": "安徽芯宇驰半导体科技有限公司",
+        "mode": "内贸",
+        "year": "2026",
+        "mid": "",
+        "no": "157",
+        "status": "待完结",
+        "overdue": "补充截止日期",
+        "product": "H25G9TCXXCX702A  Sk hynix",
+        "ptype": "晶圆",
+        "contractQty": 119602.0
       }
     ]
   },
@@ -46306,9 +46322,9 @@
     ]
   },
   "query": {
-    "total": 337,
+    "total": 338,
     "queried": 0,
-    "not_queried": 337,
+    "not_queried": 338,
     "queried_pct": 0.0,
     "top_queried": [],
     "unqueried_sample": [

@@ -2642,7 +2642,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v74';
+var APP_VER='v75';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -3411,11 +3411,15 @@ function ioNoticeForm(){
     '<div style="display:flex;gap:8px;align-items:flex-start;margin-top:4px">'+
       '<div style="flex:1;min-width:0">'+
         '<div style="font-size:11px;color:var(--t2);margin-bottom:3px">采购合同号</div>'+
-        '<input type="text" id="ion_buy" oninput="ionAutoFill()" placeholder="填一个带出全部" style="height:36px;font-size:13px;padding:0 10px;border:1px solid var(--inp-b);border-radius:8px;width:100%;background:var(--card);box-sizing:border-box">'+
+        '<input type="text" id="ion_buy" oninput="ionContractInput(\'buy\')" onkeydown="ionContractKey(event,\'buy\')" placeholder="输入后按 Enter 选择" autocomplete="off" style="height:36px;font-size:13px;padding:0 10px;border:1px solid var(--inp-b);border-radius:8px;width:100%;background:var(--card);box-sizing:border-box">'+
+        '<div id="ion_buy_hint" class="srcline" style="display:none;margin-top:4px;line-height:1.6"></div>'+
+        '<div id="ion_buy_list"></div>'+
       '</div>'+
       '<div style="flex:1;min-width:0">'+
         '<div style="font-size:11px;color:var(--t2);margin-bottom:3px">销售合同号</div>'+
-        '<input type="text" id="ion_sale" oninput="ionAutoFill()" placeholder="同上联动" style="height:36px;font-size:13px;padding:0 10px;border:1px solid var(--inp-b);border-radius:8px;width:100%;background:var(--card);box-sizing:border-box">'+
+        '<input type="text" id="ion_sale" oninput="ionContractInput(\'sale\')" onkeydown="ionContractKey(event,\'sale\')" placeholder="输入后按 Enter 选择" autocomplete="off" style="height:36px;font-size:13px;padding:0 10px;border:1px solid var(--inp-b);border-radius:8px;width:100%;background:var(--card);box-sizing:border-box">'+
+        '<div id="ion_sale_hint" class="srcline" style="display:none;margin-top:4px;line-height:1.6"></div>'+
+        '<div id="ion_sale_list"></div>'+
       '</div>'+
     '</div>'+
   '</div>'+
@@ -3507,7 +3511,6 @@ function ionPreviewPid(){
    关键：项目号是「权威来源」→ 改项目号时同步覆盖 buy/sale/customer
         合同号是「辅助来源」→ 只填空 buy/sale/customer，保留用户改的项目号 */
 var _ION_AF_DEBOUNCE=null;
-var _ION_PICK_HITS=[]; // v54：候选合同暂存（多匹配弹窗用）
 function ionAutoFill(){
   clearTimeout(_ION_AF_DEBOUNCE);
   _ION_AF_DEBOUNCE=setTimeout(function(){
@@ -3535,101 +3538,138 @@ function ionAutoFill(){
       });
       if(hit) matchedById=true;
     }
-    /* v54：采购/销售合同号支持子串模糊搜索；多匹配弹窗选 */
+    /* v75：合同号匹配 —— 只在「唯一命中」时自动回填；多命中不弹窗（避免输入到一半被弹窗打断，
+       交给输入框的 Enter → 内联候选列表处理） */
     if(!hit && buy){
       var buyHits=ionContractSearch(sb,'buy',buy);
       if(buyHits.length===1){ hit=buyHits[0]; }
-      else if(buyHits.length>1){ ionPickContractModal(buyHits,'buy'); return; }
     }
     if(!hit && sale){
       var saleHits=ionContractSearch(sb,'sale',sale);
       if(saleHits.length===1){ hit=saleHits[0]; }
-      else if(saleHits.length>1){ ionPickContractModal(saleHits,'sale'); return; }
     }
     if(hit){
-      /* 回填项目号段（只填空） */
-      if(hit.pid){
-        var parts=hit.pid.split('-'); // ['LB','2026','J','091']
-        if(parts.length>=3){
-          if(!val('ion_year')) val_set('ion_year', parts[1]||'2026');
-          var wantMode=parts[2]==='J'?'外贸（J）':'内贸';
-          if(!val('ion_mode')) val_set('ion_mode', wantMode);
-          if(!val('ion_no')) val_set('ion_no', parts.slice(parts[2]==='J'?3:2).join('-')||hit.no||'');
-          ionPreviewPid();
-        }
-      }
-      if(matchedById){
-        /* 项目号是权威来源：改项目号 = 换合同主体 → 覆盖 buy/sale/customer */
-        if(hit.buy && val('ion_buy')!==hit.buy){ val_set('ion_buy', hit.buy); }
-        if(hit.sale && val('ion_sale')!==hit.sale){ val_set('ion_sale', hit.sale); }
-        if(hit.customer){
-          var box=document.getElementById('ion_customers');
-          if(box){
-            box.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
-              '<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid var(--inp-b);border-radius:8px;background:var(--card)">'+
-              '<button type="button" class="btn sm" data-act="ionDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'+
-            '</div>';
-          }
-        }
-      } else {
-        /* 合同号是辅助来源：只填空 buy/sale/customer，保留用户改的项目号 */
-        if(!val('ion_buy') && hit.buy){ val_set('ion_buy', hit.buy); }
-        if(!val('ion_sale') && hit.sale){ val_set('ion_sale', hit.sale); }
-        if(hit.customer){
-          var box=document.getElementById('ion_customers');
-          if(box && !box.querySelector('[data-idx="0"]')){
-            box.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
-              '<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid var(--inp-b);border-radius:8px;background:var(--card)">'+
-              '<button type="button" class="btn sm" data-act="ionDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'+
-            '</div>';
-          }
-        }
-      }
-      /* 提示 */
-      if(hint){
-        hint.style.display='inline-flex';
-        hint.style.color='var(--green)';
-        hint.innerHTML='✓ 已自动匹配合同：'+esc(hit.product||'')+(hit.customer?' · 下家 '+esc(hit.customer):'');
-      }
-      /* 自动加载产品下拉 */
-      ionLoadProductOptions([hit]);
+      /* v75：统一走 ionApplyPick 回填（原逻辑内联在此，现抽成公共函数给「Enter 点选」复用）。
+         matchedById=true（项目号命中）→ 覆盖；否则（合同号唯一命中）→ 项目号只填空。 */
+      ionApplyPick(hit, matchedById?'pid':'buy', matchedById);
     } else {
       if(hint){ hint.style.display='inline-flex'; hint.style.color='var(--t3)'; hint.innerHTML='未匹配到合同（项目号/合同号可能尚无记录）'; }
     }
   }, 250);
 }
-/* v54：合同号子串模糊搜索（不区分大小写），返回所有匹配的合同记录 */
+/* v75：合同号子串模糊搜索（不区分大小写），按匹配质量排序：完整相等 > 前缀 > 中间命中。
+   旧版只做无排序子串过滤，输入 "0520" 打到一半（"0"）会命中 714 条，弹窗列表全是无关合同。 */
 function ionContractSearch(records,field,q){
   if(!q) return [];
-  var ql=q.toLowerCase();
-  return records.filter(function(r){
-    var v=r[field];
-    return v && String(v).toLowerCase().indexOf(ql)>=0;
+  var ql=q.toLowerCase(), ex=[], st=[], mid=[];
+  records.forEach(function(r){
+    var v=r[field]; if(!v) return;
+    var s=String(v).toLowerCase(), i=s.indexOf(ql);
+    if(i<0) return;
+    if(s===ql) ex.push(r); else if(i===0) st.push(r); else mid.push(r);
   });
+  return ex.concat(st,mid);
 }
-/* v54：多个候选时弹窗让用户选择；点击后填入 buy/sale 框并重跑 ionAutoFill 走严格匹配 */
-function ionPickContractModal(hits,type){
+/* v75：合同号输入框 —— 输入过程中「不弹窗」，只更新下方提示 + 唯一精确匹配时静默回填；
+   按 Enter 才在输入框下方展开候选列表（内联，不复用模态 —— 旧版 openModal 是单层覆盖，
+   弹「选合同」会把整个预通知表单顶掉，点选后一关模态表单就没了 = 辉哥说的"点击后直接退出"）。 */
+var _ION_PICK_HITS=[];
+function ionContractInput(type){
+  var inp=document.getElementById('ion_'+type);
+  var box=document.getElementById('ion_'+type+'_list');
+  var hint=document.getElementById('ion_'+type+'_hint');
+  if(box) box.innerHTML='';                       /* 一旦继续输入，旧候选列表立即收起 */
+  var q=((inp&&inp.value)||'').trim();
+  if(!hint) return;
+  if(q.length<2){ hint.style.display='none'; return; }   /* <2 字符不搜索，避免 "0" 命中 700+ */
+  var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
+  if(!sb.length){
+    hint.style.display='inline-flex'; hint.style.color='var(--t3)';
+    hint.innerHTML='合同数据尚未加载完成，请稍候再试';
+    return;
+  }
+  var hits=ionContractSearch(sb,type,q);
+  if(!hits.length){
+    hint.style.display='inline-flex'; hint.style.color='var(--t3)';
+    hint.innerHTML='未匹配到合同，可继续输入或核对编号';
+    return;
+  }
+  /* 输入完整且唯一 → 静默回填（此时意图明确，项目号一并覆盖，保证两者一致） */
+  var i0=hits[0];
+  if(i0 && String(i0[type]||'').toLowerCase()===q.toLowerCase()){
+    hint.style.display='inline-flex'; hint.style.color='var(--green)';
+    hint.innerHTML='✓ 已匹配：'+esc(i0.pid||'')+(i0.product?' · '+esc(i0.product):'');
+    ionApplyPick(i0,type,true);
+    return;
+  }
+  hint.style.display='inline-flex'; hint.style.color='var(--ac)';
+  hint.innerHTML='找到 '+hits.length+' 个候选，按 <b>Enter</b> 选择';
+}
+/* v75：Enter 才展开候选列表 */
+function ionContractKey(e,type){
+  if(e.key!=='Enter' && e.keyCode!==13) return;
+  e.preventDefault();
+  var q=(val('ion_'+type)||'').trim();
+  if(!q){ toast('请先输入合同号'); return; }
+  var sb=V9&&V9.inventory&&V9.inventory.sheet2_brief||[];
+  if(!sb.length){ toast('合同数据尚未加载完成，请稍候再试'); return; }
+  var hits=ionContractSearch(sb,type,q);
+  if(!hits.length){ toast('未匹配到合同：'+q); return; }
+  if(hits.length===1){ ionApplyPick(hits[0],type,true); toast('已填入：'+(type==='buy'?hits[0].buy:hits[0].sale)); return; }
+  ionShowPickList(hits,type);
+}
+/* v75：内联候选列表（挂在输入框下方，不动模态栈） */
+function ionShowPickList(hits,type){
+  var box=document.getElementById('ion_'+type+'_list');
+  if(!box) return;
   _ION_PICK_HITS=hits;
-  var body=
-    '<div style="font-size:12.5px;color:var(--t2);margin-bottom:10px">找到 '+hits.length+' 个匹配「<b style="color:var(--t1)">'+esc(type==='buy'?'采购':'销售')+'</b>」的合同，点选一个：</div>'+
-    '<div style="max-height:55vh;overflow:auto;border:1px solid var(--line);border-radius:8px;background:var(--bg)">'+
-    hits.map(function(r,i){
+  var MAX=50, list=hits.slice(0,MAX);
+  box.innerHTML='<div style="margin-top:6px;border:1px solid var(--ac-l);border-radius:10px;background:var(--card);max-height:240px;overflow:auto">'+
+    '<div style="padding:7px 10px;font-size:11.5px;color:var(--t3);border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--card)">找到 '+hits.length+' 条'+(hits.length>MAX?'（显示前 '+MAX+' 条，继续输入可缩小）':'')+' · 点击填入</div>'+
+    list.map(function(r,i){
       var no=type==='buy'? r.buy : r.sale;
-      return '<div data-act="ionPickContract" data-idx="'+i+'" data-type="'+type+'" '+
-        'style="padding:10px 12px;border-bottom:1px solid var(--line);cursor:pointer;display:flex;gap:10px;align-items:center">'+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-weight:700;font-size:14px;color:var(--t1);word-break:break-all">'+esc(no||'-')+'</div>'+
-          '<div style="font-size:12px;color:var(--t2);margin-top:3px">'+
-            '<span>项目：'+esc(r.pid||'-')+'</span>'+
-            (r.customer? ' · 下家 '+esc(r.customer) : '')+
-            (r.product? ' · '+esc(r.product) : '')+
-          '</div>'+
-        '</div>'+
-        '<div style="color:var(--green);font-size:18px">›</div>'+
+      return '<div data-act="ionPickInline" data-idx="'+i+'" data-type="'+type+'" '+
+        'style="padding:9px 10px;border-bottom:1px solid var(--line);cursor:pointer">'+
+        '<div style="font-weight:700;font-size:13px;color:var(--t1);word-break:break-all">'+esc(no||'-')+'</div>'+
+        '<div style="font-size:11.5px;color:var(--t2);margin-top:3px;line-height:1.5">'+
+          '项目：'+esc(r.pid||'-')+
+          (r.customer?' · 下家 '+esc(r.customer):'')+
+          (r.product?' · '+esc(r.product):'')+
+        '</div></div>';
+    }).join('')+'</div>';
+}
+/* v75：回填。fromPick=用户明确点选（可覆盖），否则只填空（静默联动） */
+function ionApplyPick(hit,type,fromPick){
+  if(!hit) return;
+  if(hit.buy)  val_set('ion_buy',  hit.buy);
+  if(hit.sale) val_set('ion_sale', hit.sale);
+  /* 项目号（只填空；点选时覆盖 —— 换合同等于换项目） */
+  if(hit.pid){
+    var parts=hit.pid.split('-');   /* ['LB','2026','J','091'] */
+    if(parts.length>=3){
+      if(fromPick || !val('ion_year')) val_set('ion_year', parts[1]||'2026');
+      var wantMode=parts[2]==='J'?'外贸（J）':'内贸';
+      if(fromPick || !val('ion_mode')) val_set('ion_mode', wantMode);
+      if(fromPick || !val('ion_no')) val_set('ion_no', parts.slice(parts[2]==='J'?3:2).join('-')||hit.no||'');
+      ionPreviewPid();
+    }
+  }
+  /* 销售端下家（无则填一个空行） */
+  if(hit.customer){
+    var cbox=document.getElementById('ion_customers');
+    if(cbox && (fromPick || !cbox.querySelector('[data-f="customer"]'))){
+      cbox.innerHTML='<div data-idx="0" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">'+
+        '<input type="text" data-f="customer" value="'+esc(hit.customer)+'" placeholder="销售下家" style="flex:1;height:30px;font-size:12.5px;padding:0 8px;border:1px solid var(--inp-b);border-radius:8px;background:var(--card)">'+
+        '<button type="button" class="btn sm" data-act="ionDelCustomer" data-idx="0" style="border-color:var(--red-l);color:var(--red)">'+ic('trash','currentColor',12)+'</button>'+
       '</div>';
-    }).join('')+
-    '</div>';
-  openModal('选合同',body,'',null,{icon:'search'});
+    }
+  }
+  var hint=document.getElementById('ion_autoHint');
+  if(hint){
+    hint.style.display='inline-flex'; hint.style.color='var(--green)';
+    hint.innerHTML='✓ 已自动匹配合同：'+esc(hit.product||'')+(hit.customer?' · 下家 '+esc(hit.customer):'');
+  }
+  ionLoadProductOptions([hit]);
 }
 /* 预通知：把 sheet2_brief 中匹配到的产品填到 #ion_product */
 function ionLoadProductOptions(records){
@@ -5736,17 +5776,18 @@ document.addEventListener('click',function(e){
   if(act==='ionConfirmProduct'){ ionConfirmProduct(); return; }
   if(act==='ionAddCustomer'){ ionAddCustomer(); return; }
   if(act==='ionDelCustomer'){ ionDelCustomer(+id); return; }
-  if(act==='ionPickContract'){
-    /* v54：用户点击候选合同 → 填入 buy/sale 框 → 关弹窗 → 重跑 ionAutoFill（此时走严格匹配） */
-    var idx=+id;
-    var picked=_ION_PICK_HITS[idx];
+  if(act==='ionPickInline'){
+    /* v75：内联候选点选 → 填入 + 收起列表（不动模态栈，预通知表单完整保留）。
+       注意：候选项的属性名是 data-idx，旧版 handler 读的是 data-id → 恒为 null → 永远取第 0 项。 */
+    var _idx=+(el.getAttribute('data-idx'));
+    var _t=el.getAttribute('data-type')||'buy';
+    var picked=_ION_PICK_HITS[_idx];
     if(picked){
-      var t=el.dataset.type;
-      var v=t==='buy'? picked.buy : picked.sale;
-      if(v){ val_set(t==='buy'?'ion_buy':'ion_sale', v); }
-      closeModal();
-      _ION_PICK_HITS=[];
-      ionAutoFill();
+      ionApplyPick(picked,_t,true);
+      var lb=document.getElementById('ion_'+_t+'_list'); if(lb) lb.innerHTML='';
+      var hb=document.getElementById('ion_'+_t+'_hint');
+      if(hb){ hb.style.display='inline-flex'; hb.style.color='var(--green)'; hb.innerHTML='✓ 已填入：'+esc(_t==='buy'?picked.buy:picked.sale); }
+      toast('已填入 '+(picked.pid||''));
     }
     return;
   }
@@ -6098,7 +6139,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v74.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v75.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
