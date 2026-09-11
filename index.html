@@ -863,14 +863,13 @@ function pageLogin(){
       '<h1 style="margin:0;font-size:23px;font-weight:700">小马工作台</h1>'+
       '<p class="srcline" style="margin-top:6px">请输入账号密码登录</p>'+
     '</div>'+
-    '<div class="form-row"><label class="fl">账号</label><input type="text" id="lgUser" placeholder="主人：张辉 · 同事：各自账号" autocomplete="username"></div>'+
+    '<div class="form-row"><label class="fl">账号</label><input type="text" id="lgUser" placeholder="请输入账号" autocomplete="username"></div>'+
     '<div class="form-row"><label class="fl">密码</label><input type="password" id="lgPwd" placeholder="请输入密码" autocomplete="current-password"></div>'+
     '<div class="form-row"><label class="fl">服务器地址 <span style="color:var(--t3);font-weight:400">（隧道重启换地址才改，平时不用动）</span></label>'+
     '<div style="display:flex;gap:8px"><input type="text" id="lgUrl" value="'+esc(_lgurl)+'" placeholder="https://xxx.trycloudflare.com" autocomplete="off" style="flex:1">'+
     '<button class="btn" data-act="testSrv" style="flex:0 0 auto;height:38px;padding:0 12px">测试</button></div></div>'+
     '<div id="lgTip"></div>'+
     '<button class="btn p" data-act="doLogin" style="width:100%;height:38px;margin-top:8px">登 录</button>'+
-    '<p class="srcline" style="margin-top:16px;text-align:center;line-height:1.7">主人用「张辉」，同事用各自账号（由主账号开通）<br>服务器在线时走服务端校验 · 离线回落本机账号</p>'+
     '<p class="srcline" style="margin-top:10px;text-align:center">服务器连不上（电脑关机）？<a href="javascript:;" data-act="loginOffline" style="color:var(--ac);font-weight:600;text-decoration:underline">离线浏览</a>（只看，不能写）</p>'+
   '</div>';
 }
@@ -2320,16 +2319,16 @@ function pageMe(){
         '<button class="btn sm" data-act="v9ioWebhookClear">清除</button>'+
         '</div>')+
      '<p class="srcline" style="margin-top:10px;line-height:1.8">'+
-     '<b style="color:var(--green)">账号登录即直写：</b>v43 起出厂内置令牌已撤销（安全收口）。主人登录「张辉」账号、同事登录各自账号后，点「确认写入」即可直进 V9.1，操作留痕可查。<br>'+
-'<b>注意：</b>本机隧道地址<b>电脑重启后会变化</b>；届时主人点上方「手动填 / 改」填入新地址（或电脑上双击 v91-crud\一键启动直写.bat 重新扫码）。若顶部显示「未开启」说明地址已失效需重配。<br>'+
+     '<b style="color:var(--green)">账号登录即直写：</b>v43 起出厂内置令牌已撤销（安全收口）。登录后点「确认写入」即可直进 V9.1，操作留痕可查。<br>'+
+'<b>注意：</b>本机隧道地址<b>电脑重启后会变化</b>；届时点上方「手动填 / 改」填入新地址（或电脑上双击 v91-crud\一键启动直写.bat 重新扫码）。若顶部显示「未开启」说明地址已失效需重配。<br>'+
 
      '<span style="color:var(--t3)">说明：金山「自动化流程 webhook 触发」方案已验证在 WPS 个人版不成立（参数只能走 body 且无法解析字段，'+
      '建出来的记录字段全空），故当前固定走本机 server 通道。</span></p></div>';
 /* 账号管理（仅主账号可见） */
   if(_sess && _sess.role==='admin'){
-    var us=getUsers();
+    var us=getUsers().filter(function(x){return x.u===(_sess&&_sess.u)});
     h+='<div class="card"><div class="card-h"><h3>'+ic('user','var(--violet)',16)+'账号管理</h3>'+
-       '<span class="srcline">共 '+us.length+' 个账号 · 仅主账号可管账号</span></div>'+
+       '<span class="srcline">仅主账号可管理账号 · 当前 '+esc(_sess&&_sess.name||'')+'</span></div>'+
        '<table class="v9tbl"><thead><tr><th>账号</th><th>名称</th><th>角色</th><th style="width:160px">操作</th></tr></thead><tbody>'+
        us.map(function(x,i){
          return '<tr><td><b style="font-family:Menlo,Consolas,monospace">'+esc(x.u)+'</b></td>'+
@@ -2341,8 +2340,7 @@ function pageMe(){
        }).join('')+
        '</tbody></table>'+
        '<div class="btn-row" style="margin-top:12px"><button class="btn p sm" data-act="userAdd">'+ic('plus','#fff',14)+'新增账号</button>'+
-       '<button class="btn sm" data-act="logout" style="margin-left:auto">↪ 退出登录</button></div>'+
-       '<p class="srcline" style="margin-top:8px">主账号凭据：zhanghui / huige789（默认，请改密码）</p></div>';
+       '<button class="btn sm" data-act="logout" style="margin-left:auto">↪ 退出登录</button></div></div>';
     h+='<div class="card"><div class="card-h"><h3>'+ic('doc','var(--violet)',16)+'操作日志</h3>'+
        '<span class="srcline">谁在什么时候动了 V9.1</span></div>'+
        '<p class="srcline" style="margin-bottom:10px">查看所有账号的写入 / 修改 / 删除 / 同步记录（时间、IP、动作、结果）。仅主账号可见。</p>'+
@@ -2599,7 +2597,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v69';
+var APP_VER='v70';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -2673,7 +2671,7 @@ function v9ioFetchLive(opts){
     .catch(function(e){
       state.v9ioLiveLoading=false;
       state.v9ioLiveErr = (e&&e.message)||String(e);
-      if(state.v9ioLiveErr==='unauthorized') state.v9ioLiveErr='未登录或会话过期：请退出后用账号重新登录（主人：张辉 · 同事：各自账号）';
+      if(state.v9ioLiveErr==='unauthorized') state.v9ioLiveErr='未登录或会话过期：请退出后用账号重新登录';
       console.warn('[v9ioFetchLive] 失败:', state.v9ioLiveErr);
       /* 不抛：UI 会显示 fallback + 错误提示，不影响主流程 */
     });
