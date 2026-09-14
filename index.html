@@ -1237,7 +1237,8 @@ function pageExtHub(hub){
   var dl=[
     {act:'v9DlXlsx',      name:'V9.1 多维表格 · 导出 Excel', desc:'合同详情 + 出入库 · 原表结构', ic:'doc', c:'linear-gradient(135deg,#FFC02E,var(--ac))'},
     {act:'v9DlInv',       name:'仓库盘点表 · 导出 Excel',    desc:'选仓库 · 按现有库存生成盘点表', ic:'box', c:'linear-gradient(135deg,#6C8AE4,#4E6BD8)'},
-    {act:'v9DlHalfMonth', name:'半月报 · 导出 Word',         desc:'选起止日期 · 按区间生成汇报',   ic:'doc', c:'linear-gradient(135deg,#4BD08B,#2BA85F)'}
+    {act:'v9DlHalfMonth', name:'半月报 · 导出 Word',         desc:'选起止日期 · 按区间生成汇报',   ic:'doc', c:'linear-gradient(135deg,#4BD08B,#2BA85F)'},
+    {act:'v9DlWeekly',    name:'出入库周报 · 导出 Excel',     desc:'选起止日期 · 按区间生成周报',   ic:'doc', c:'linear-gradient(135deg,#8E7CF0,#5B3FD8)'}
   ];
   return '<div class="page-head">'+ic('cloud','var(--ac)',22)+'<h2>氚云 &amp; 多维表格</h2><span class="sub">系统入口 · 数据下载</span></div>'+
   '<div class="hub-wrap">'+
@@ -2651,7 +2652,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v78';
+var APP_VER='v79';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5369,6 +5370,48 @@ function v9DlHalfMonth(){
     return true;
   }, {icon:'doc'});
 }
+function v9DlWeekly(){
+  var wh=getV9ioWebhook();
+  if(!wh||!wh.url){ toast('请先在「数据 & 设置」配置 V9.1 直写通道'); return; }
+  var pad2=function(n){return (n<10?'0':'')+n};
+  var fmtD=function(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())};
+  /* 默认：本自然周（周一~周日），用户可改 */
+  var now=new Date();
+  var dow=(now.getDay()+6)%7; /* 周一=0 */
+  var monday=new Date(now); monday.setDate(now.getDate()-dow);
+  var sunday=new Date(monday); sunday.setDate(monday.getDate()+6);
+  var body=
+    '<div class="form-row"><label class="fl">起始日期</label><input type="date" id="wkFrom" value="'+fmtD(monday)+'"></div>'+
+    '<div class="form-row"><label class="fl">结束日期</label><input type="date" id="wkTo" value="'+fmtD(sunday)+'"></div>'+
+    '<p class="srcline" style="margin-top:10px">出入库严格按所选区间统计（默认本自然周）。<br>周报含「采购入库 / 销售出库」两张表，依据 V9.1 合同详情 + 出入库表如实生成。</p>';
+  openModal('出入库周报 · 选择区间', body, '生成 Excel', function(){
+    var vFrom=val('wkFrom'), vTo=val('wkTo');
+    if(!vFrom||!vTo){ toast('请选择起始与结束日期'); return false; }
+    if(vFrom>vTo){ toast('起始日期不能晚于结束日期'); return false; }
+    toast('正在按所选区间生成出入库周报…');
+    setTimeout(function(){
+      var url=wh.url.replace(/\/+$/,'')+'/api/weekly-report';
+      _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify({from:vFrom,to:vTo})})
+        .then(function(r){
+          if(!r.ok){
+            return r.text().then(function(t){ throw new Error('HTTP '+r.status+' '+(t||'')); });
+          }
+          return r.blob();
+        })
+        .then(function(blob){
+          var name='出入库周报_'+vFrom.replace(/-/g,'')+'_'+vTo.replace(/-/g,'')+'.xlsx';
+          var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function(){URL.revokeObjectURL(a.href)},2500);
+          toast('已下载 '+name+'（'+Math.round(blob.size/1024)+' KB）');
+        })
+        .catch(function(e){
+          toast('生成失败：'+(e&&e.message||''));
+        });
+    },50);
+    return true;
+  }, {icon:'doc'});
+}
 
 /* ===== 仓库盘点表（2026-09-07 新增）=====
    v9DlInv → 弹模态列 sheet2 出现的所有「最后一个仓库」供选择
@@ -5649,6 +5692,7 @@ document.addEventListener('click',function(e){
   if(act==='v9DlXlsx'){v9DlXlsx();return}
   if(act==='v9DlInv'){v9DlInv();return}
   if(act==='v9DlHalfMonth'){v9DlHalfMonth();return}
+  if(act==='v9DlWeekly'){v9DlWeekly();return}
   if(act==='exportCsv'){doExportCsv();return}
   if(act==='import'){
     openModal('导入恢复','<div style="font-size:14px;font-weight:700;line-height:1.7">选择之前导出的 JSON 备份文件。<br><span style="color:#FF5B5B">导入会覆盖当前全部数据，不限条数。</span></div>','选择文件',function(){
@@ -6345,7 +6389,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v78.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v79.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
