@@ -2415,7 +2415,7 @@ function pageMe(){
      '1. 微信/钉钉待办无法被网页直接读取（端内私有数据、无开放接口），本工作台提供「粘贴消息转待办」代替。<br>'+
      '2. 资讯抓取需服务端支持，当前为 JSON 导入 + 本地缓存，联网失败保留上一次数据。<br>'+
      '3. 页面部署后公网可访问，请勿在页面里预填涉密或个人敏感信息。<br>'+
-     '4. v43 起：在线写入/实时查询均需账号登录（8 小时有效），受限账号只能录新增、不能改删；每次写入服务端留痕。<br>'+
+     '4. v43 起：在线写入/实时查询均需账号登录（12 小时有效），受限账号只能录新增、不能改删；每次写入服务端留痕。<br>'+
      '5. 数据存于本机 localStorage，清理浏览器缓存会丢失，务必定期导出。</div></div>';
   h+='<div class="card"><div class="card-h"><h3>'+ic('shield','var(--sky)',16)+'版本与自检</h3></div>'+
      '<div style="font-size:13.5px;font-weight:700;line-height:1.9">当前版本：<b style="color:var(--ac)">'+APP_VER+'</b></div>'+
@@ -2652,7 +2652,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v79';
+var APP_VER='v80';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -4104,7 +4104,7 @@ function ionConfirmOk(){
   /* v47：写入前自检 —— 未登录 / 会话过期 / 离线身份会直接被服务端 401，先说清楚，避免白等一圈才报失败 */
   var _s0=getSess();
   if(_s0 && _s0.exp && Date.now()>_s0.exp){
-    toast('⚠ 登录已超过 8 小时，写入可能被拒。建议退出重登后再写');
+    toast('⚠ 登录已超过 12 小时，写入可能被拒。建议退出重登后再写');
   } else if(_s0 && (_s0.src==='offline' || _s0.src==='local') && !_s0.stok){
     toast('⚠ 当前是离线/本地身份，写入会被服务端拒绝 —— 数据会存待同步区，登录后重试即可');
   }
@@ -6334,7 +6334,7 @@ document.addEventListener('click',function(e){
             return;
           }
           var b=res.body;
-          _ok({u:b.user||u, role:b.role||'user', name:(lu&&lu.name)?lu.name:b.user, stok:b.token, exp:Date.now()+8*3600000, src:'server'});
+          _ok({u:b.user||u, role:b.role||'user', name:(lu&&lu.name)?lu.name:b.user, stok:b.token, exp:Date.now()+12*3600000, src:'server'});
         })
         .catch(function(){ _fallbackSwitch(); });
     }
@@ -6389,7 +6389,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v79.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v80.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
