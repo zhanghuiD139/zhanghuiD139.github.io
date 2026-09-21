@@ -2654,7 +2654,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v81';
+var APP_VER='v82';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5798,6 +5798,7 @@ document.addEventListener('click',function(e){
   if(act==='v9DlHalfMonth'){v9DlHalfMonth();return}
   if(act==='v9DlWeekly'){v9DlWeekly();return}
   if(act==='v9DlInventory'){v9DlInventory();return}
+  if(act==='v9DlStockBackdate'){v9DlStockBackdate();return}
   if(act==='exportCsv'){doExportCsv();return}
   if(act==='import'){
     openModal('导入恢复','<div style="font-size:14px;font-weight:700;line-height:1.7">选择之前导出的 JSON 备份文件。<br><span style="color:#FF5B5B">导入会覆盖当前全部数据，不限条数。</span></div>','选择文件',function(){
