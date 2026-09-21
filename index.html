@@ -1239,7 +1239,8 @@ function pageExtHub(hub){
     {act:'v9DlInv',       name:'仓库盘点表 · 导出 Excel',    desc:'选仓库 · 按现有库存生成盘点表', ic:'box', c:'linear-gradient(135deg,#6C8AE4,#4E6BD8)'},
     {act:'v9DlHalfMonth', name:'半月报 · 导出 Word',         desc:'选起止日期 · 按区间生成汇报',   ic:'doc', c:'linear-gradient(135deg,#4BD08B,#2BA85F)'},
     {act:'v9DlWeekly',    name:'出入库周报 · 导出 Excel',     desc:'选起止日期 · 按区间生成周报',   ic:'doc', c:'linear-gradient(135deg,#8E7CF0,#5B3FD8)'},
-    {act:'v9DlInventory', name:'盘点报告 · 导出 Word',        desc:'选日期/仓库/负责人 · 生成盘点报告', ic:'doc', c:'linear-gradient(135deg,#E94E77,#C42B5A)'}
+    {act:'v9DlInventory', name:'盘点报告 · 导出 Word',        desc:'选日期/仓库/负责人 · 生成盘点报告', ic:'doc', c:'linear-gradient(135deg,#E94E77,#C42B5A)'},
+    {act:'v9DlStockBackdate', name:'历史库存反推',              desc:'选日期/仓库/格式 · 倒推历史库存', ic:'doc', c:'linear-gradient(135deg,#F39C12,#E67E22)'}
   ];
   return '<div class="page-head">'+ic('cloud','var(--ac)',22)+'<h2>氚云 &amp; 多维表格</h2><span class="sub">系统入口 · 数据下载</span></div>'+
   '<div class="hub-wrap">'+
@@ -5469,6 +5470,48 @@ function v9DlInventory(){
         .catch(function(e){
           toast('生成失败：'+(e&&e.message||''));
         });
+    },50);
+    return true;
+  }, {icon:'doc'});
+}
+
+function v9DlStockBackdate(){
+  var wh=getV9ioWebhook();
+  if(!wh||!wh.url){ toast('请先在「数据 & 设置」配置 V9.1 直写通道'); return; }
+  var pad2=function(n){return (n<10?'0':'')+n};
+  var fmtD=function(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())};
+  var now=new Date();
+  var whArr=(V9&&V9.inventory&&V9.inventory.by_warehouse)||[];
+  var whOpts=whArr.map(function(x){return '<option value="'+esc(x.wh||'')+'">'+esc(x.wh||'')+'</option>'}).join('');
+  var whSelect=whOpts
+    ? '<select id="sbWh" style="flex:1;min-width:0">'+whOpts+'</select>'
+    : '<input type="text" id="sbWh" placeholder="如 邦达凤岗仓" style="flex:1;min-width:0">';
+  var body=
+    '<div class="form-row"><label class="fl">截止日期</label><input type="date" id="sbDate" value="'+fmtD(now)+'"></div>'+
+    '<div class="form-row"><label class="fl">仓库</label>'+whSelect+'</div>'+
+    '<div class="form-row"><label class="fl">导出格式</label><select id="sbFmt" style="flex:1;min-width:0"><option value="xlsx" selected>Excel 明细表</option><option value="docx">Word 报告</option></select></div>'+
+    '<p class="srcline" style="margin-top:10px">以 V9.1 当前库存快照为基准，倒推该日闭区间库存：扣减截止日之后的净出库、加回净入库。货值按当前单价口径。</p>';
+  openModal('历史库存反推', body, '生成并下载', function(){
+    var vDate=val('sbDate'), vWh=val('sbWh'), vFmt=val('sbFmt')||'xlsx';
+    if(!vDate){ toast('请选择截止日期'); return false; }
+    if(!vWh){ toast('请选择或填写仓库'); return false; }
+    toast('正在反推 '+vWh+' '+vDate+' 库存…');
+    setTimeout(function(){
+      var url=wh.url.replace(/\/+$/,'')+'/api/stock-backdate';
+      _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify({date:vDate,warehouse:vWh,fmt:vFmt})})
+        .then(function(r){
+          if(!r.ok){ return r.text().then(function(t){ throw new Error('HTTP '+r.status+' '+(t||'')); }); }
+          return r.blob();
+        })
+        .then(function(blob){
+          var ext=vFmt==='docx'?'docx':'xlsx';
+          var name=vWh+'库存反推_'+vDate.replace(/-/g,'')+'.'+ext;
+          var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function(){URL.revokeObjectURL(a.href)},2500);
+          toast('已下载 '+name+'（'+Math.round(blob.size/1024)+' KB）');
+        })
+        .catch(function(e){ toast('生成失败：'+(e&&e.message||'')); });
     },50);
     return true;
   }, {icon:'doc'});
