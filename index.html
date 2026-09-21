@@ -1238,7 +1238,8 @@ function pageExtHub(hub){
     {act:'v9DlXlsx',      name:'V9.1 多维表格 · 导出 Excel', desc:'合同详情 + 出入库 · 原表结构', ic:'doc', c:'linear-gradient(135deg,#FFC02E,var(--ac))'},
     {act:'v9DlInv',       name:'仓库盘点表 · 导出 Excel',    desc:'选仓库 · 按现有库存生成盘点表', ic:'box', c:'linear-gradient(135deg,#6C8AE4,#4E6BD8)'},
     {act:'v9DlHalfMonth', name:'半月报 · 导出 Word',         desc:'选起止日期 · 按区间生成汇报',   ic:'doc', c:'linear-gradient(135deg,#4BD08B,#2BA85F)'},
-    {act:'v9DlWeekly',    name:'出入库周报 · 导出 Excel',     desc:'选起止日期 · 按区间生成周报',   ic:'doc', c:'linear-gradient(135deg,#8E7CF0,#5B3FD8)'}
+    {act:'v9DlWeekly',    name:'出入库周报 · 导出 Excel',     desc:'选起止日期 · 按区间生成周报',   ic:'doc', c:'linear-gradient(135deg,#8E7CF0,#5B3FD8)'},
+    {act:'v9DlInventory', name:'盘点报告 · 导出 Word',        desc:'选日期/仓库/负责人 · 生成盘点报告', ic:'doc', c:'linear-gradient(135deg,#E94E77,#C42B5A)'}
   ];
   return '<div class="page-head">'+ic('cloud','var(--ac)',22)+'<h2>氚云 &amp; 多维表格</h2><span class="sub">系统入口 · 数据下载</span></div>'+
   '<div class="hub-wrap">'+
@@ -2652,7 +2653,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v80';
+var APP_VER='v81';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5412,6 +5413,66 @@ function v9DlWeekly(){
     return true;
   }, {icon:'doc'});
 }
+function v9DlInventory(){
+  var wh=getV9ioWebhook();
+  if(!wh||!wh.url){ toast('请先在「数据 & 设置」配置 V9.1 直写通道'); return; }
+  var pad2=function(n){return (n<10?'0':'')+n};
+  var fmtD=function(d){return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())};
+  var now=new Date();
+  var sess=getSess();
+  var defaultMgr='张辉';
+  if(sess){
+    var u=(getUsers()||[]).find(function(x){return x.u===sess.u});
+    if(u&&u.name) defaultMgr=u.name;
+    else if(sess.name) defaultMgr=sess.name;
+  }
+  /* 仓库列表来自本地 V9 快照；若快照未加载则兜底为自由输入 */
+  var whArr=(V9&&V9.inventory&&V9.inventory.by_warehouse)||[];
+  var whOpts=whArr.map(function(x){return '<option value="'+esc(x.wh||'')+'">'+esc(x.wh||'')+'</option>'}).join('');
+  var whSelect=whOpts
+    ? '<select id="invWh" style="flex:1;min-width:0">'+whOpts+'</select>'
+    : '<input type="text" id="invWh" placeholder="如 邦达凤岗仓" style="flex:1;min-width:0">';
+  var body=
+    '<div class="form-row"><label class="fl">盘点日期</label><input type="date" id="invDate" value="'+fmtD(now)+'"></div>'+
+    '<div class="form-row"><label class="fl">仓库</label>'+whSelect+'</div>'+
+    '<div class="form-row"><label class="fl">盘点负责人</label><input type="text" id="invMgr" value="'+esc(defaultMgr)+'" placeholder="如 张辉"></div>'+
+    '<div class="form-row"><label class="fl">盘点结果</label><select id="invCons" style="flex:1;min-width:0"><option value="1" selected>账实相符</option><option value="0">账实不符</option></select></div>'+
+    '<div class="form-row" id="invItemsRow"><label class="fl">账实不符货品<br><span style="font-weight:400;color:var(--t3)">每行一个</span></label><textarea id="invItems" rows="4" placeholder="每行填一个货品名称/编码，数量栏留空待填写" style="flex:1;min-width:0;padding:10px;border-radius:8px;border:1px solid var(--line2);font-size:15px"></textarea></div>'+
+    '<p class="srcline" style="margin-top:10px">依据 V9.1 合同详情表当前库存快照生成；日期用于报告落款，库存按所选仓库实时统计。</p>';
+  openModal('盘点报告 · 导出 Word', body, '生成 Word', function(){
+    var vDate=val('invDate'), vWh=val('invWh'), vMgr=val('invMgr'), vCons=val('invCons')==='1';
+    if(!vDate){ toast('请选择盘点日期'); return false; }
+    if(!vWh){ toast('请选择或填写仓库'); return false; }
+    var items=[];
+    if(!vCons){
+      var raw=val('invItems')||'';
+      items=raw.split('\n').map(function(s){return s.trim()}).filter(Boolean).map(function(s){return {name:s};});
+      if(!items.length){ toast('账实不符时，请至少填写一个账实不符货品'); return false; }
+    }
+    toast('正在生成 '+vWh+' 盘点报告…');
+    setTimeout(function(){
+      var url=wh.url.replace(/\/+$/,'')+'/api/inventory-report';
+      _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify({date:vDate,warehouse:vWh,manager:vMgr,consistent:vCons,inconsistent_items:items})})
+        .then(function(r){
+          if(!r.ok){
+            return r.text().then(function(t){ throw new Error('HTTP '+r.status+' '+(t||'')); });
+          }
+          return r.blob();
+        })
+        .then(function(blob){
+          var name=vWh+'盘点报告_'+vDate.replace(/-/g,'')+'.docx';
+          var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name;
+          document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(function(){URL.revokeObjectURL(a.href)},2500);
+          toast('已下载 '+name+'（'+Math.round(blob.size/1024)+' KB）');
+        })
+        .catch(function(e){
+          toast('生成失败：'+(e&&e.message||''));
+        });
+    },50);
+    return true;
+  }, {icon:'doc'});
+}
 
 /* ===== 仓库盘点表（2026-09-07 新增）=====
    v9DlInv → 弹模态列 sheet2 出现的所有「最后一个仓库」供选择
@@ -5693,6 +5754,7 @@ document.addEventListener('click',function(e){
   if(act==='v9DlInv'){v9DlInv();return}
   if(act==='v9DlHalfMonth'){v9DlHalfMonth();return}
   if(act==='v9DlWeekly'){v9DlWeekly();return}
+  if(act==='v9DlInventory'){v9DlInventory();return}
   if(act==='exportCsv'){doExportCsv();return}
   if(act==='import'){
     openModal('导入恢复','<div style="font-size:14px;font-weight:700;line-height:1.7">选择之前导出的 JSON 备份文件。<br><span style="color:#FF5B5B">导入会覆盖当前全部数据，不限条数。</span></div>','选择文件',function(){
@@ -6389,7 +6451,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v80.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v81.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
