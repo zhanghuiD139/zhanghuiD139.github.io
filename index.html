@@ -2654,7 +2654,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v82';
+var APP_VER='v83';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5433,15 +5433,17 @@ function v9DlInventory(){
   var whSelect=whOpts
     ? '<select id="invWh" style="flex:1;min-width:0">'+whOpts+'</select>'
     : '<input type="text" id="invWh" placeholder="如 邦达凤岗仓" style="flex:1;min-width:0">';
-  var body=
+    var body=
     '<div class="form-row"><label class="fl">盘点日期</label><input type="date" id="invDate" value="'+fmtD(now)+'"></div>'+
+    '<div class="form-row"><label class="fl">历史某天</label><input type="checkbox" id="invAsOf" style="width:18px;height:18px;flex:none"><span style="font-size:12.5px;color:var(--t3);margin-left:6px">勾选则按上述日期<b>倒推</b>该日库存（非当前快照），套用同一盘点报告格式</span></div>'+
     '<div class="form-row"><label class="fl">仓库</label>'+whSelect+'</div>'+
     '<div class="form-row"><label class="fl">盘点负责人</label><input type="text" id="invMgr" value="'+esc(defaultMgr)+'" placeholder="如 张辉"></div>'+
     '<div class="form-row"><label class="fl">盘点结果</label><select id="invCons" style="flex:1;min-width:0"><option value="1" selected>账实相符</option><option value="0">账实不符</option></select></div>'+
     '<div class="form-row" id="invItemsRow"><label class="fl">账实不符货品<br><span style="font-weight:400;color:var(--t3)">每行一个</span></label><textarea id="invItems" rows="4" placeholder="每行填一个货品名称/编码，数量栏留空待填写" style="flex:1;min-width:0;padding:10px;border-radius:8px;border:1px solid var(--line2);font-size:15px"></textarea></div>'+
-    '<p class="srcline" style="margin-top:10px">依据 V9.1 合同详情表当前库存快照生成；日期用于报告落款，库存按所选仓库实时统计。</p>';
+    '<p class="srcline" style="margin-top:10px">默认依据 V9.1 合同详情表<b>当前</b>库存快照生成；勾选「历史某天」后，将按所选日期<b>倒推</b>该日闭区间库存（扣减该日之后净出库、加回净入库），再套用同样盘点报告格式。日期同时用于报告落款。</p>';
   openModal('盘点报告 · 导出 Word', body, '生成 Word', function(){
     var vDate=val('invDate'), vWh=val('invWh'), vMgr=val('invMgr'), vCons=val('invCons')==='1';
+    var vAsOf=document.getElementById('invAsOf') ? document.getElementById('invAsOf').checked : false;
     if(!vDate){ toast('请选择盘点日期'); return false; }
     if(!vWh){ toast('请选择或填写仓库'); return false; }
     var items=[];
@@ -5453,7 +5455,7 @@ function v9DlInventory(){
     toast('正在生成 '+vWh+' 盘点报告…');
     setTimeout(function(){
       var url=wh.url.replace(/\/+$/,'')+'/api/inventory-report';
-      _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify({date:vDate,warehouse:vWh,manager:vMgr,consistent:vCons,inconsistent_items:items})})
+      _ioFetch(url,{method:'POST', headers:_ioAuthHeaders(true), body:JSON.stringify({date:vDate,warehouse:vWh,manager:vMgr,consistent:vCons,inconsistent_items:items, as_of_date: vAsOf?vDate:''})})
         .then(function(r){
           if(!r.ok){
             return r.text().then(function(t){ throw new Error('HTTP '+r.status+' '+(t||'')); });
@@ -6495,7 +6497,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v82.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v83.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
