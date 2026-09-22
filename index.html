@@ -2654,7 +2654,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v84';
+var APP_VER='v85';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -5424,10 +5424,9 @@ async function _v9WhListAll(whUrl){
   var m={};
   (j.records||[]).forEach(function(rec){
     var v=(rec.fields||{})[whK]; if(v===undefined||v===null||v==='')return;
-    if(Array.isArray(v)) v=v.join(',');
-    var parts=String(v).replace(/[，；、\/]/g,',').split(',').map(function(x){return x.trim();}).filter(Boolean);
-    var last=parts[parts.length-1]; if(!last)return;
-    m[last]=(m[last]||0)+1;
+    if(Array.isArray(v)) v=v.map(function(x){return (x&&x.text!=null)?x.text:x;}).join(',');
+    var parts=String(v).replace(/[，；、\/|]/g,',').split(',').map(function(x){return x.trim();}).filter(Boolean);
+    parts.forEach(function(p){ m[p]=(m[p]||0)+1; });
   });
   return Object.keys(m).sort(function(a,b){return m[b]-m[a]});
 }
@@ -6517,7 +6516,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v84.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v85.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
