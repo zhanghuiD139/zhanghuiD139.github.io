@@ -1008,7 +1008,10 @@ function loadV9(){
         if(!isNaN(t) && (Date.now()-t)/60000 > 30){ syncV9Now(true); }
       }
     }catch(e){}
-  }).catch(function(){ V9ERR='⚠ 线上数据获取失败，当前显示的是本地缓存，可能已过期'; if(state.tab==='v9')render(); });
+  }).catch(function(){ V9ERR='⚠ 线上数据获取失败，正在改走隧道实时拉取最新…'; if(state.tab==='v9')render();
+    /* v90：github.io 国内访问不稳导致 fetch 失败、长期冻结在旧缓存（如 143 少算一笔 76000）。
+       失败即自动改走隧道实时拉最新 V9 覆盖 V9+localStorage，用户刷新即可自愈，无需手动点按钮。 */
+    try{ var _w=getV9ioWebhook(); if((_w.mode==='server'||_w.url||V9IO_BUILTIN_URL)) syncV9Now(true); }catch(e){} });
 }
 /* v56：刷新缓存 —— 拉线上静态 data.v9.json；若线上这份也过期（>30 分钟），
    明确告诉辉哥去点「同步最新数据」，避免误以为已经是最新。 */
@@ -1253,7 +1256,7 @@ function pageExtHub(hub){
         '</a>';
       }).join('')+
     '</div></div>'+
-    '<div class="hub-sec"><div class="hub-sec-t" style="display:flex;align-items:center;justify-content:space-between;gap:10px">数据下载<button class="btn xs p" data-act="syncV9Now" title="从 V9.1 实时拉取最新数据，刷新整个工作台">'+ic('refresh','#fff',13)+'同步最新数据</button></div><div class="hub-grid">'+
+    '<div class="hub-sec"><div class="hub-sec-t" style="display:flex;align-items:center;justify-content:space-between;gap:10px">数据下载<span style="display:flex;gap:8px"><button class="btn xs" data-act="clearV9Cache" title="清除浏览器里冻结的旧 V9 缓存后自动重载（解决显示旧数字）">清空本地缓存</button><button class="btn xs p" data-act="syncV9Now" title="从 V9.1 实时拉取最新数据，刷新整个工作台">'+ic('refresh','#fff',13)+'同步最新数据</button></span></div><div class="hub-grid">'+
       dl.map(function(x){
         return '<button data-act="'+x.act+'" class="hub-card">'+
           '<div class="hub-ic" style="background:'+x.c+'">'+ic(x.ic,'#fff',20)+'</div>'+
@@ -2650,7 +2653,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v89';
+var APP_VER='v90';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -6247,6 +6250,15 @@ document.addEventListener('click',function(e){
     render(); return;
   }
   if(act==='v9ioRefresh'){render();v9ioFetchLive(v9ioBuildParams());return}
+  /* v90：清空浏览器冻结的旧 V9 缓存并强制重载，解决「github.io 拉取失败 → 长期显示旧数字（如 143 少算 76000）」 */
+  if(act==='clearV9Cache'){
+    confirmBox('清空本地缓存','将清除浏览器里冻结的旧 V9 数据缓存并自动重新加载，强制拉取最新数据。<br>可解决「明明数据已更新、页面却显示旧数字」的问题。<br><span style="color:#FF5B5B">确认后页面会立即刷新。</span>','确认清空并重载',function(){
+      try{ localStorage.removeItem('wb_v9_data_v9'); }catch(e){}
+      try{ sessionStorage.removeItem('wb_v9_data_v9'); }catch(e){}
+      toast('已清空本地缓存，正在重载…'); location.reload(true);
+    });
+    return;
+  }
   if(act==='gotoV9Io'){state.tab='v9';state.v9sub='io';render();return}
   /* 详情查询：切档 / 查 / 重置（辉哥参照 V9.1 大屏详情查询） */
   if(act==='qDetailDim'){state.qDetailDim=v;state.qDetailResult=null;render();return}
@@ -6512,7 +6524,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v89.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v90.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
