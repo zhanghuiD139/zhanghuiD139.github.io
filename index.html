@@ -943,8 +943,13 @@ function userForm(x){
    sheet30 里同 pid/方向/数量、日期被改过的「更新记录」因日期与主表不同，逃过去重键
    (方向,日期,项目号,数量)，被当成独立新流水 → 虚增出库 → 库存=入-出 变负（盘亏）。
    兜底：按 (dir,pid,qty,model,wh) 分组，同组多条且日期相邻 ≤3 天的，保留最早一条，
-   其余标 is_update=true；所有汇总跳过 is_update（明细仍显示，但不计入）。 */
-var UPD_MARKED=false;
+   其余标 is_update=true；所有汇总跳过 is_update（明细仍显示，但不计入）。
+   ★ v91（2026-09-28）已停用：gen_data.py 现已彻底排除 sheet30（见其"sheet30 已彻底排除"注释），
+     all_detail 为纯 sheet3 真实流水，本兜底失去前提、只剩误杀副作用——
+     LB-2026-143/KASH6311 两笔真实入库 8/17 与 8/20 各 76,000（同项目/产品/仓/数量，
+     日期恰差 3 天 ≤ 阈值）被误标 is_update → 汇总 270,488 ≠ 明细 346,488（辉哥报）。
+     故 UPD_MARKED 初始即 true，markUpdateRecords() 成为空操作，函数体存档不再执行。 */
+var UPD_MARKED=true;
 function _evTime(s){
   if(!s) return null;
   var p=String(s).replace(/[-.]/g,'/').split('/');
@@ -2653,7 +2658,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v90';
+var APP_VER='v91';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -6524,7 +6529,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v90.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v91.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
