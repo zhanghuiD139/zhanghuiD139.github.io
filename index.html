@@ -2635,7 +2635,7 @@ var KD_PMAP={dir:'dir',date:'date',pid:'pid',product:'product',wh:'wh',qty:'qty'
    v44：令牌仍然撤销（网页 0 钥匙），但【地址】恢复内置 —— 否则登录页地址为空会直接报
    「未配置服务器地址」导致谁都登不进去。只有地址没有令牌是安全的：无会话/无令牌时
    服务端对 /api/v91/raw、/api/sync、写接口一律 401（实测已验证）。 */
-var V9IO_BUILTIN_URL='https://explained-reseller-agents-burke.trycloudflare.com';
+var V9IO_BUILTIN_URL='https://yield-extreme-shipments-little.trycloudflare.com';
 var V9IO_BUILTIN_TOKEN='';
 function getV9ioWebhook(){
   var noCfg={mode:'',url:'',token:'',pmap:null};
@@ -2654,7 +2654,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v87';
+var APP_VER='v88';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -6516,7 +6516,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v87.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v88.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
