@@ -1415,23 +1415,19 @@ function v9Io(mode){
     var da=nd(a.date), db=nd(b.date);
     return da<db?1:(da>db?-1:0);
   });
-  /* 统计汇总：v69 起，实时数据优先用服务端 summary（按当前 方向/日期/仓库 过滤后的全量精确汇总，
-     不受 5000 截断影响，sheet3 超量时统计仍准）；cache/fallback 模式退化为对 pool 求和（含 is_update 排除）。 */
-  var ssum;
-  if(liveDet && liveDet.length && state.v9ioSummary){
-    var _S=state.v9ioSummary;
-    ssum={in_amt:_S.in_amt||0,out_amt:_S.out_amt||0,in_qty:_S.in_qty||0,out_qty:_S.out_qty||0,in_cnt:_S.in_cnt||0,out_cnt:_S.out_cnt||0,cnt:(_S.in_cnt||0)+(_S.out_cnt||0)};
-  } else {
-    ssum={in_amt:0,out_amt:0,in_qty:0,out_qty:0,in_cnt:0,out_cnt:0,cnt:pool.length};
-    pool.forEach(function(x){
-      if(x.is_update) return; /* 2026-09-03：更新记录不计入汇总 */
-      var a=(x.amt_cny!=null?x.amt_cny:x.amt)||0;
-      var q=+x.qty||0;
-      if(x.dir==='入'){ssum.in_amt+=a;ssum.in_qty+=q;ssum.in_cnt++}else{ssum.out_amt+=a;ssum.out_qty+=q;ssum.out_cnt++}
-    });
-  }
-  /* 顶部"全量 N 笔"标签的真实总数：实时模式取 summary 的精确总数，cache 模式取 allDet 长度 */
-  var _totalCnt=(liveDet && liveDet.length && state.v9ioSummary)?((state.v9ioSummary.in_cnt||0)+(state.v9ioSummary.out_cnt||0)):(allDet.length||0);
+  /* v89：统计汇总始终按「当前筛选后的明细(pool)」实时求和，不再依赖服务端全局 summary。
+     旧逻辑在实时模式下会无视筛选、显示全平台总量（几千万），与"筛 143 看 143"的预期不符；
+     且当用户 V9 为旧缓存时，全局 summary 也帮不上忙。pool 已含全部明细（live=实时全量 / cache=快照全量，
+     均<=limit 未截断），直接对筛选后 pool 求和即准，筛 143 就显示 143 的汇总。 */
+  var ssum={in_amt:0,out_amt:0,in_qty:0,out_qty:0,in_cnt:0,out_cnt:0,cnt:pool.length};
+  pool.forEach(function(x){
+    if(x.is_update) return; /* 2026-09-03：更新记录不计入汇总 */
+    var a=(x.amt_cny!=null?x.amt_cny:x.amt)||0;
+    var q=+x.qty||0;
+    if(x.dir==='入'){ssum.in_amt+=a;ssum.in_qty+=q;ssum.in_cnt++}else{ssum.out_amt+=a;ssum.out_qty+=q;ssum.out_cnt++}
+  });
+  /* 顶部"全量 N 笔"标签：allDet 已是全量（live=实时 / cache=快照），直接取长度 */
+  var _totalCnt=allDet.length||0;
   var rLabel=rr==='custom'?((vFrom||'不限')+' ~ '+(vTo||'不限')):(rr==='month'?'本月':(rr==='prev'?('上周 '+esc(pwr.label||'')):(rr==='all'?'全部':('本周 '+esc(wr.label||'')+' · 已过 '+(wr.days||0)+' 天'))));
   if(whF!=='全部') rLabel+=' · '+esc(whF);
   /* 出入库明细·自定义查询 + 说明卡：仅独立「出入库」tab（mode!=='brief'）显示。
@@ -2654,7 +2650,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v88';
+var APP_VER='v89';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -6516,7 +6512,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v88.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v89.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
