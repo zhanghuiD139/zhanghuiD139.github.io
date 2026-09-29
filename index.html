@@ -958,31 +958,16 @@ function _evTime(s){
   if(!y||!m||!d) return null;
   return Date.UTC(y,m-1,d);
 }
-function markUpdateRecords(){
-  if(UPD_MARKED) return;
-  var det=(V9 && V9.io && V9.io.all_detail);
-  if(!det || !det.length){ UPD_MARKED=true; return; }
-  var groups={};
-  det.forEach(function(x,i){
-    var k=(x.dir||'')+'|'+(x.pid||'')+'|'+(x.qty||0)+'|'+(x.model||'')+'|'+(x.wh||'');
-    (groups[k]=groups[k]||[]).push(i);
-  });
-  Object.keys(groups).forEach(function(k){
-    var arr=groups[k];
-    if(arr.length<2) return;
-    var wd=arr.map(function(i){return {i:i,t:_evTime(det[i].date)};}).filter(function(o){return o.t!==null;});
-    if(wd.length<2) return;
-    wd.sort(function(a,b){return a.t-b.t;});
-    /* 保留「日期最晚」的一条：sheet3 主表真实出库日通常晚于 sheet30 的更新日
-       （例：LB-2026-078 真实出库 7/31，sheet30 更新记录把日期写成 7/30），
-       保留较晚那条 = 明细显示真实日期；较早的那条标 is_update，不计入汇总。 */
-    var keep=wd[wd.length-1];
-    wd.slice(0,-1).forEach(function(o){
-      if(Math.abs(keep.t-o.t) <= 3*86400000) det[o.i].is_update=true;
-    });
-  });
-  UPD_MARKED=true;
-}
+/* ★ v96（2026-09-29）：markUpdateRecords 彻底作废（函数体清空）。
+   历史教训：v91 只把 UPD_MARKED 初始设 true「停用」，但 loadV9/refreshV9/applyV9
+   里仍留着 `UPD_MARKED=false; markUpdateRecords();`——每次加载数据都把停用开关
+   重新打开，误杀去重照跑不误：143/KASH6311 两笔真实入库 8/17 与 8/20 各 76,000
+   （同项目/产品/仓/数量，日期恰差 3 天 ≤ 阈值）被误标 is_update，
+   合同详情按产品分组汇总排除 → 入 270,488、库存 -76,000 ≠ 明细 346,488（辉哥再报）。
+   sheet30 早在 gen_data.py 中彻底排除，all_detail 全是 sheet3 真实流水，
+   任何「更新记录」判定都没有存在理由。同步删除 1432（io-query 缓存汇总）、
+   2077（合同详情产品分组汇总）两处 is_update 排除。汇总恒等明细求和。 */
+function markUpdateRecords(){ /* 已作废：保留空函数防外部调用报错 */ }
 var V9=null;                       // 运行时数据：优先 fetch('data.v9.json')，离线回退 localStorage
 var V9ERR='';                      // 线上数据获取失败时的显式提示（不再静默吞错，避免一直显示旧的本地缓存）
 function fmtCNY(n){n=+n||0; if(n>=1e8)return '¥'+(n/1e8).toFixed(2)+'亿'; if(n>=1e4)return '¥'+(n/1e4).toFixed(1)+'万'; return '¥'+Math.round(n).toLocaleString();}
@@ -1429,7 +1414,6 @@ function v9Io(mode){
      均<=limit 未截断），直接对筛选后 pool 求和即准，筛 143 就显示 143 的汇总。 */
   var ssum={in_amt:0,out_amt:0,in_qty:0,out_qty:0,in_cnt:0,out_cnt:0,cnt:pool.length};
   pool.forEach(function(x){
-    if(x.is_update) return; /* 2026-09-03：更新记录不计入汇总 */
     var a=(x.amt_cny!=null?x.amt_cny:x.amt)||0;
     var q=+x.qty||0;
     if(x.dir==='入'){ssum.in_amt+=a;ssum.in_qty+=q;ssum.in_cnt++}else{ssum.out_amt+=a;ssum.out_qty+=q;ssum.out_cnt++}
@@ -2074,7 +2058,6 @@ function renderDetailGroup(c, events, defaultOpen){
           _pIdx++;
           var inQty=0, outQty=0, inAmt=0, outAmt=0, prices=[], whs={}, firstP='';
           blk.events.forEach(function(e){
-            if(e.is_update) return;
             if(!firstP) firstP = e.pid||'';
             if(e.dir==='入'){ inQty += (+e.qty||0); inAmt += (+e.amt||0); }
             else { outQty += (+e.qty||0); outAmt += (+e.amt||0); }
@@ -2666,7 +2649,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v95';
+var APP_VER='v96';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -6537,7 +6520,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v95.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v96.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
