@@ -2649,7 +2649,7 @@ function getV9ioWebhook(){
 /* v48：客户端排障日志上报（fire-and-forget，绝不阻塞、绝不影响主流程）。
    手机端写入失败时把「状态码/错误信息/地址/会话状态/版本」送回服务端 client.log，
    这样不用让辉哥描述现象，直接看日志定位。匿名也可上报（服务端对该接口放行）。 */
-var APP_VER='v97';
+var APP_VER='v98';
 function _clog(tag,msg,ctx){
   try{
     var w=getV9ioWebhook();
@@ -4316,14 +4316,14 @@ function ionRenderCanvas(){
   // ===== 列定义：每列 x/宽/对齐方式（表头与数据共享同一组 cols → 纵向中轴线绝对重合） =====
   // cardX 必须在 cols 之前声明（修复 var 提升导致 cols.x 全为 NaN 的 bug：复制图片表格画不出）
   var cardX=pad;
-  // 5 列总宽 96+248+76+96+78=594，加左右各 12px 内边距 = 618, W=720 留 24px 外边距
+  // 5 列总宽 96+280+76+96+78=626，加左右各 12px 内边距 = 650, W=720 留 22px 外边距
   // 仓库 居中 / 产品 左对齐（完整显示不够就换行） / 规格居中 / 日期居中 / 数量居中
   var cols=[
     {k:'仓库',     x:cardX+12,  w:96,  align:'center'},
-    {k:'产品',     x:cardX+114, w:248, align:'left'},
-    {k:'规格/体积',x:cardX+368, w:76,  align:'center'},
-    {k:'日期',     x:cardX+450, w:96,  align:'center'},
-    {k:'数量',     x:cardX+552, w:78,  align:'center'}
+    {k:'产品',     x:cardX+108, w:280, align:'left'},
+    {k:'规格/体积',x:cardX+388, w:76,  align:'center'},
+    {k:'日期',     x:cardX+464, w:96,  align:'center'},
+    {k:'数量',     x:cardX+560, w:78,  align:'center'}
   ];
   // 行高：根据产品名换行行数动态算（产品列最多 3 行：每行 13px → 18px 行距 → 30px；单行 24px；多行 +N*16）
   function fitRows(rows){
@@ -6548,7 +6548,7 @@ document.addEventListener('click',function(e){
 /* ================= PWA ================= */
 function initPWA(){
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
-    navigator.serviceWorker.register('sw.v97.js').then(function(reg){
+    navigator.serviceWorker.register('sw.v98.js').then(function(reg){
       if(!reg) return;
       // 注册后立即主动检查 SW 更新（即使页面长期开着，也能立刻升级到新 SW，拿到最新 data.json）
       try{ if(reg.update) reg.update(); }catch(_){}
